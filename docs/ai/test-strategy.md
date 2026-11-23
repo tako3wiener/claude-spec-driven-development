@@ -46,7 +46,7 @@
 ## v5 の実行基準（本節が旧記述より優先）
 - `dev`では部分テストを許容し、`final`で承認済みの全必須TCを新規RUNで検証する。最終E2Eは`run_e2e.py`のみ。
 - E2Eはサンプル`examples/playwright-java`を正式ケースとして扱わず、業務REQ→TC→固有Javaテストソース→JUnit結果を必須とする。
-- テスト用ネットワーク隔離はOS/コンテナ層で実施し、責任者のNET署名を必要とする。
+- テスト用ネットワーク隔離はOS/コンテナ層で実施し、責任者のNET承認を必要とする。
 - PNG/Trace/JUnit XMLの自動集約は`docs/ai/e2e-evidence.md`参照。完了条件に独立レビュー/人間G6承認を含む。
 
 

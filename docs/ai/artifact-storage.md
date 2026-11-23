@@ -33,7 +33,7 @@ python3 scripts/project_setup.py init --non-interactive \
 - 2つの保存先が同じ、あるいは親子関係になる指定を拒否する。
 - すでにGit管理されているファイルを含むディレクトリは保存先にできない。
 - 初期設定時に `.gitignore` の **管理対象ブロックだけ** を更新する。既存のルールを勝手に削除せず、保存先変更前の除外指定も残す（過去のPNG/Traceを誤ってGit管理しないため）。Git除外はファイルのアクセス権を制御するものではない。
-- ローカル設定は `.claude/local/project-env.json` に保存し、Git管理除外。G2承認後に保存先を変更した場合は署名が失効し、再承認が必要。
+- ローカル設定は `.claude/local/project-env.json` に保存し、Git管理除外。G2承認後に保存先を変更した場合は承認が失効し、再承認が必要。
 - 共有フォルダ/NASなどのリポジトリ外パスへの書き込みは非対応。別ストレージに移す場合、責任者が明示的に転送し、暗号化・閲覧権限・保存期限を設定する。
 
 ## 3. 実際に集約される場所
@@ -95,4 +95,4 @@ python3 scripts/prune_artifacts.py --apply --confirm-delete # 確認後に削除
 
 `project-env.json`に新キーが存在しない場合、既定値（`reports/test-results`、`reports/e2e`、90日）が自動適用される。旧設定をそのまま読み取れるため、移行のための上書きは必須ではない。
 
-旧v5の`.gitignore`を引き継いだ場合は、`reports/test-results/`の除外ルールを追加するか、`/project-setup`を再実行して管理対象ブロックを作る。後者は設定ファイルを書き換えるため、既存のG2署名を失効させる点に注意。
+旧v5の`.gitignore`を引き継いだ場合は、`reports/test-results/`の除外ルールを追加するか、`/project-setup`を再実行して管理対象ブロックを作る。後者は設定ファイルを書き換えるため、既存のG2承認を失効させる点に注意。

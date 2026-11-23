@@ -12,7 +12,7 @@
 ## 管理・証拠レベル
 - `scripts/check_e2e_evidence.py`はPNGデータ・ハッシュ・Playwright traceイベント・JUnit/TC対応・RUN_ID・snapshot-IDを照合する。
 - `summary.json`が`PASS`でも、独立CIの実行由来（R12は保留）や期待結果の業務的妥当性を証明できない。G5独立レビューとG6人間確認を要する。
-- TraceはDOMやネットワーク・認証トークン等を含み得る。スクリーンショットのマスクがTraceを匿名化することはない。**人工データ・最低権限ユーザー・組織の保管権限/保持期間・NET署名**を前提とする。
+- TraceはDOMやネットワーク・認証トークン等を含み得る。スクリーンショットのマスクがTraceを匿名化することはない。**人工データ・最低権限ユーザー・組織の保管権限/保持期間・NET承認**を前提とする。
 
 ## コマンド
 ```bash
@@ -24,7 +24,7 @@ python3 scripts/check_e2e_evidence.py docs/changes/CHG-001 \
   <設定したE2E保存先>/CHG-001/<RUN-ID> --require-pass
 ```
 
-接続先が未確認、G2/NET署名が未検証、OS/コンテナ隔離が未構築の場合はE2Eの実行を**BLOCKED**とする。`docs/ai/v5-operations.md`参照。
+接続先が未確認、G2/NET承認記録が未検証、OS/コンテナ隔離が未構築の場合はE2Eの実行を**BLOCKED**とする。`docs/ai/v5-operations.md`参照。
 
 ## 保存先と保持期間
 - `/project-setup`で指定した`e2e_evidence_dir`を Python runner と Java EvidenceRecorder が共通利用する。環境変数`E2E_EVIDENCE_ROOT`はそのディレクトリの絶対パス。
@@ -52,4 +52,4 @@ python3 scripts/prune_artifacts.py   # 90日超の完了済み実行を一覧（
 python3 scripts/prune_artifacts.py --apply --confirm-delete
 ```
 
-Git管理済みファイルを含むディレクトリ、ソース、`.git`、`.claude`、リポジトリ外、シンボリックリンクは保存先に指定できない。署名G2承認後の保存先再設定はG2署名を失効させる。
+Git管理済みファイルを含むディレクトリ、ソース、`.git`、`.claude`、リポジトリ外、シンボリックリンクは保存先に指定できない。G2承認後の保存先再設定はG2承認を失効させる。

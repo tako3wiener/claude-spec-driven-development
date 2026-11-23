@@ -12,12 +12,12 @@ disable-model-invocation: true
 4. `examples/playwright-java`はDEMO_ONLY。正式E2Eコマンドへ選んだ場合はG4 PASSにならない。業務アプリ固有のテストを指定する。
 5. `.claude/local/project-env.json`を保存して`project_setup.py check`で検証。URLやコマンドを変えた場合G2は失効する。設定に秘密値を格納しない。
 6. `toolchain.py doctor --phase setup`、`--phase dev`を実行。開発診断にPlaywright依存は不要。`--phase e2e`は別途確認し、必要なら`/tool-setup`。
-7. 実際のE2E前には、別途NET署名（実ネットワーク隔離・人工データ・Trace保存許可）が必要。`project_setup`におけるURLの文字列検査は本番接続の遮断を保証しない。
+7. 実際のE2E前には、別途NET承認（実ネットワーク隔離・人工データ・Trace保存許可）が必要。`project_setup`におけるURLの文字列検査は本番接続の遮断を保証しない。
 
 詳細は`docs/ai/v5-operations.md`。
 
 ## 保存設定と保持期間の補足
 - `unit_integration_results_dir`, `e2e_evidence_dir`, `artifact_retention_days` は `.claude/local/project-env.json` に保存。未記載の旧v5設定は既定値にフォールバック。
-- G2承認後の保存先変更は、署名ハッシュが変わるため再承認が必要。
+- G2承認後の保存先変更は、対象ハッシュが変わるため再承認が必要。
 - `.gitignore`の専用ブロックに両保存先を追加する。Git管理済みファイルを隠さないこと。
 - 削除は`prune_artifacts.py`の一覧確認の後、管理者が `--apply --confirm-delete` を指定したときだけ行う。90日経過時の自動削除ではない。

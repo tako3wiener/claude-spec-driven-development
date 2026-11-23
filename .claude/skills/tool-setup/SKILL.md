@@ -13,4 +13,4 @@ disable-model-invocation: true
 5. `python3 scripts/toolchain.py plan`で取得コマンド・ツール版・接続元を提示し、別途承認した場合のみ`python3 scripts/toolchain.py install --apply --approve-downloads`。OS全体/JDK/ビルドツールの自動更新は実施しない。
 6. 再診断。ブラウザBOOTSTRAPPEDは起動検証ではないため、G4 E2Eで実起動確認する。失敗・未解決はBLOCKED。
 
-詳細は`docs/ai/v5-operations.md`。取得コマンドのフラグは人の承認そのものではなく、署名G2やOS権限とは別物。
+詳細は`docs/ai/v5-operations.md`。取得コマンドのフラグは人の承認そのものではなく、G2やOS権限とは別物。
