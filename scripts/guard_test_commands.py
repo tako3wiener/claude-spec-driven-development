@@ -2,7 +2,7 @@
 """v5 PreToolUse guard. Fail-closed on unrecognized pre-G2 execution.
 
 A project hook is advisory defense-in-depth, NOT an OS sandbox. Operator must
-protect policy/scripts/signing key and isolate test network outside this repo.
+protect policy/scripts and isolate the test network outside this repo.
 """
 from __future__ import annotations
 import json
@@ -69,7 +69,7 @@ def allowed_docs_edit(request):
     if not isinstance(path,str):return False
     selected=Path(path).resolve() if Path(path).is_absolute() else (ROOT/path).resolve()
     changes=ROOT/'docs'/'changes'
-    # No edit access to policy, approval signatures, or Java implementation before G2.
+    # No edit access to policy, approval records, or Java implementation before G2.
     return selected.is_relative_to(changes.resolve()) and selected.suffix.lower() in ('.md','.csv','.json')
 
 
@@ -85,9 +85,17 @@ def main():
             if not current.is_relative_to(ROOT.resolve()):return reject('Tool cwd outside the selected codebase')
         if tool=='Bash':
             command=inp.get('command','')
+            if isinstance(command,str) and re.search(r'\brecord-(?:g2|net|g6)\b',command,re.I):
+                return reject('Only the human operator may record approval in a separate terminal')
             if allow_before_g2(command):return 0
             if not isinstance(command,str) or SHELL_META.search(command):
                 return reject('Compound shell commands require an operator-reviewed execution path (no ; | && $() redirection)')
+        if tool in ('Write','Edit','MultiEdit','NotebookEdit'):
+            path=inp.get('file_path') or inp.get('notebook_path')
+            if isinstance(path,str):
+                target=(ROOT/Path(path)).resolve()
+                if target.is_relative_to((ROOT/'.claude/local/approvals').resolve()):
+                    return reject('Claude may not write human approval records')
         if tool not in ('Bash','Write','Edit','MultiEdit','NotebookEdit'):
             return 0  # unknown/MCP tools must be restricted by managed permissions/sandbox
         try:

@@ -1,4 +1,4 @@
-"""v5 R01/R02/R03/R08/R16 signature and hook regression tests."""
+"""v5 R01/R02/R03/R08/R16 approval-record and hook regression tests."""
 import json
 import os
 from pathlib import Path
@@ -10,7 +10,6 @@ import unittest
 
 SRC=Path(__file__).resolve().parents[1]
 
-@unittest.skipUnless(shutil.which('openssl'),'OpenSSL required for detached signature tests')
 class SecurityTests(unittest.TestCase):
     def setUp(self):
         t=tempfile.TemporaryDirectory();self.addCleanup(t.cleanup)
@@ -31,11 +30,8 @@ class SecurityTests(unittest.TestCase):
         subprocess.run(['git','-C',str(self.repo),'config','user.name','Tester'],check=True)
         subprocess.run(['git','-C',str(self.repo),'add','.'],check=True)
         subprocess.run(['git','-C',str(self.repo),'commit','-qm','init'],check=True)
-        self.key=self.tmp/'operator-private.pem'
-        self.pub=self.tmp/'operator-public.pem'
-        subprocess.run(['openssl','genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:2048','-out',str(self.key)],check=True,capture_output=True)
-        subprocess.run(['openssl','pkey','-in',str(self.key),'-pubout','-out',str(self.pub)],check=True,capture_output=True)
-        self.env=dict(os.environ,SDD_APPROVAL_PUBLIC_KEY=str(self.pub),SDD_CHANGE_ID='CHG-001')
+        self.env=dict(os.environ,SDD_CHANGE_ID='CHG-001')
+        self.env.pop('SDD_APPROVAL_PUBLIC_KEY',None)
         self.init()
 
     def call(self,name,*args,input_text=None):
@@ -49,24 +45,23 @@ class SecurityTests(unittest.TestCase):
                     '--confirm-codebase','--confirm-isolated')
         self.assertEqual(p.returncode,0,p.stderr)
 
-    def sign(self,gate,values):
+    def approve(self,gate,values):
         folder=self.repo/'.claude/local/approvals'
         doc=folder/f'CHG-001-{gate}.json'
         doc.write_text(json.dumps({'change_id':'CHG-001','gate':gate,'approver':'operator',
             'approved_at':'2026-11-23T11:00:00+09:00','decision':'APPROVED',**values}),encoding='utf-8')
-        subprocess.run(['openssl','dgst','-sha256','-sign',str(self.key),'-out',str(doc.with_suffix('.sig')),str(doc)],check=True)
         return doc
 
-    def sign_g2(self):
+    def approve_g2(self):
         p=self.call('approval_gate.py','hashes','--change-id','CHG-001')
         self.assertEqual(p.returncode,0,p.stderr)
-        return self.sign('G2',json.loads(p.stdout))
+        return self.approve('G2',json.loads(p.stdout))
 
     def hook(self,tool,tool_input):
         return self.call('guard_test_commands.py',input_text=json.dumps({'tool_name':tool,'tool_input':tool_input,'cwd':str(self.repo)}))
 
-    def test_signed_g2_approves_then_tamper_invalidates(self):
-        doc=self.sign_g2()
+    def test_unsigned_g2_approves_then_stale_hash_invalidates(self):
+        doc=self.approve_g2()
         p=self.call('approval_gate.py','verify-g2','--change-id','CHG-001')
         self.assertEqual(p.returncode,0,p.stderr)
         self.assertEqual(self.hook('Write',{'file_path':str(self.repo/'src/Main.java'),'content':'test'}).returncode,0)
@@ -75,10 +70,21 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(p.returncode,2)
         self.assertEqual(self.hook('Write',{'file_path':str(self.repo/'src/Main.java'),'content':'test'}).returncode,2)
 
-    def test_unsigned_approval_is_rejected(self):
-        self.sign_g2()
-        (self.repo/'.claude/local/approvals/CHG-001-G2.sig').write_bytes(b'forged')
+    def test_missing_approval_is_rejected(self):
         self.assertEqual(self.call('approval_gate.py','verify-g2','--change-id','CHG-001').returncode,2)
+
+    def test_unsigned_json_does_not_require_key_or_signature(self):
+        doc=self.approve_g2()
+        self.assertFalse(doc.with_suffix('.sig').exists())
+        self.assertEqual(self.call('approval_gate.py','verify-g2','--change-id','CHG-001').returncode,0)
+
+    def test_ai_cannot_record_approval_through_hook(self):
+        self.approve_g2()
+        self.assertEqual(self.hook('Bash',{'command':'python3 scripts/approval_gate.py record-g2 --change-id CHG-001'}).returncode,2)
+        self.assertEqual(self.hook('Write',{'file_path':str(self.repo/'.claude/local/approvals/CHG-001-G2.json'),'content':'{}'}).returncode,2)
+
+    def test_record_requires_interactive_terminal(self):
+        self.assertEqual(self.call('approval_gate.py','record-g2','--change-id','CHG-001',input_text='operator\nAPPROVE G2 CHG-001\n').returncode,2)
 
     def test_shell_compound_bypass_refused(self):
         for cmd in ['echo project_setup.py check; mvn test','echo project_setup.py init && mvn test',
@@ -91,15 +97,15 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(self.hook('Edit',{'file_path':str(self.repo/'module/Config.java')}).returncode,2)
         self.assertEqual(self.hook('Bash',{'command':'git status --short'}).returncode,0)
 
-    def test_signed_network_attestation_rejects_wrong_origin(self):
-        self.sign('NET',{'allowed_origin':'http://localhost:18080','isolation_mode':'container-egress-policy',
+    def test_network_approval_rejects_wrong_origin(self):
+        self.approve('NET',{'allowed_origin':'http://localhost:18080','isolation_mode':'container-egress-policy',
              'dedicated_test_credentials':True,'synthetic_test_data':True,'trace_storage_approved':True})
         good=self.call('approval_gate.py','verify-net','--change-id','CHG-001','--allowed-origin','http://localhost:18080')
         self.assertEqual(good.returncode,0,good.stderr)
         bad=self.call('approval_gate.py','verify-net','--change-id','CHG-001','--allowed-origin','https://production.example')
         self.assertEqual(bad.returncode,2)
 
-    def test_unsigned_network_attestation_rejected(self):
+    def test_missing_network_approval_rejected(self):
         self.assertEqual(self.call('approval_gate.py','verify-net','--change-id','CHG-001','--allowed-origin','http://localhost:18080').returncode,2)
 
     def test_git_snapshot_changes_with_untracked(self):

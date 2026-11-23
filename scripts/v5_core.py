@@ -1,7 +1,8 @@
-"""v5: shared provenance, canonical digests and signed external attestations.
+"""Shared provenance, digests and operator-recorded approvals.
 
-The signing private key MUST stay outside Claude's accessible workspace. Local
-hashes and hooks are consistency checks, not tamper-proof execution attestations.
+Gate approvals are ordinary local JSON records, not digital signatures.
+Optional R19 gateway receipt verification remains separate.
+Local hashes and hooks are not tamper-proof execution attestations.
 """
 from __future__ import annotations
 import hashlib
@@ -107,20 +108,33 @@ def external_public_key():
 
 
 def verify_approval(change_id, gate, *, context=None):
-    """Read a detached externally signed approval (never generate it from Claude)."""
+    """Validate a human-recorded local approval; identity is not authenticated."""
     if not CHANGE_RE.fullmatch(change_id) or gate not in ('G2','G6','NET'):
         raise SetupError('Invalid change ID or gate')
     folder = ROOT / '.claude' / 'local' / 'approvals'
     document = folder / f'{change_id}-{gate}.json'
-    content = verified_signature(document, folder / f'{change_id}-{gate}.sig', external_public_key())
+    if not document.is_file():
+        raise SetupError(f'{gate}: human approval record missing')
+    content = json.loads(document.read_text(encoding='utf-8'))
+    return validate_approval_content(change_id, gate, content, context=context)
+
+
+def validate_approval_content(change_id, gate, content, *, context=None):
+    if not CHANGE_RE.fullmatch(change_id) or gate not in ('G2','G6','NET') or not isinstance(content, dict):
+        raise SetupError('Invalid approval record')
     if content.get('change_id') != change_id or content.get('gate') != gate or content.get('decision') != 'APPROVED':
         raise SetupError(f'{gate}: approval does not match change or decision')
     if not isinstance(content.get('approver'), str) or not content['approver'].strip() or not content.get('approved_at'):
         raise SetupError(f'{gate}: human approver / timestamp missing')
+    try:
+        approved = datetime.fromisoformat(content['approved_at'].replace('Z','+00:00'))
+        if approved.tzinfo is None:
+            raise ValueError('missing timezone')
+    except (TypeError, ValueError, AttributeError) as ex:
+        raise SetupError(f'{gate}: approval timestamp invalid') from ex
     expiry=content.get('expires_at')
     if expiry is not None:
         try:
-            from datetime import datetime, timezone
             deadline=datetime.fromisoformat(expiry.replace('Z','+00:00'))
             if deadline.tzinfo is None or deadline <= datetime.now(timezone.utc):
                 raise ValueError('expired or missing timezone')

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """v5 orchestrator: preflight -> execute -> collect -> verify -> report.
 
-No privileged network sandbox is created here. A signed operator attestation and
+No privileged network sandbox is created here. A recorded human approval and
 external firewall/container policy are required for formal E2E execution.
 """
 from __future__ import annotations
