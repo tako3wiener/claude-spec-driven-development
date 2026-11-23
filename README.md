@@ -1,11 +1,11 @@
 # Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.1（保存先設定拡張）
 
-**現状:** v5スターター実装／実ユーザー環境への組み込み・ブラウザ実起動は未検証。v4から改修した新規成果物。仕様書→G2承認→Java実装→JUnit/結合→Playwright for Java E2E・PNG/Trace→独立レビュー→G6承認を支援する。外部のGateway/OSサンドボックス/承認鍵は同梱されない。
+**現状:** v5スターター実装／実ユーザー環境への組み込み・ブラウザ実起動は未検証。v4から改修した新規成果物。仕様書→G2承認→Java実装→JUnit/結合→Playwright for Java E2E・PNG/Trace→独立レビュー→G6承認を支援する。外部のGateway/OSサンドボックスは同梱されない。
 
 ## 重要な境界
 
-- **Claude CodeのHookだけで本番操作・外部接続を完全に防ぐことはできない。** 必須のOS/コンテナアウトバウンド制御は利用者の環境で構築する。接続先に関する責任者の署名付きNET承認がない場合、正式E2EはBLOCKED。
-- **人間承認は外部署名で検証。** `.claude/local/approvals`に置くG2/G6/NET JSONと `.sig`、外部OS管理の公開鍵が必要。Claudeから秘密鍵を触れる状態では強い保証にならない。
+- **Claude CodeのHookだけで本番操作・外部接続を完全に防ぐことはできない。** 必須のOS/コンテナアウトバウンド制御は利用者の環境で構築する。接続先に関する責任者のNET承認がない場合、正式E2EはBLOCKED。
+- **v5.3: 電子署名不要。** G2/G6/NETは人が別ターミナルから `approval_gate.py record-*` で記録し、JSONと対象ハッシュを検証する。鍵・.sig不要。本人証明や耐改竄性はない。
 - **Luna利用には独自Gatewayの互換性実証が必要。** Anthropicは非ClaudeモデルへのGateway利用をサポート対象として保証していない。モデル名だけでは接続・ツール呼び出しの成功を保証しない。
 - R12（CI強制）は保留なので、ローカルの証跡PASSを独立CIの真正性証明と誤認しない。
 
@@ -15,13 +15,13 @@
 2. `claude`を起動、`/project-setup`でコードベース・テスト用URL・正式なJava E2Eコマンドを確認。`examples/`は`DEMO_ONLY`。
 3. `/tool-setup`でJDK/Maven/Gradle/Playwright Javaを診断。`resolve`/`install`は依存解決・ダウンロードへの**人の承認後のみ**。
 4. `docs/spec/`に原本仕様書、`docs/changes/CHG-001/`に解析結果・変更設計と期待結果を作成。
-5. **G2承認:** G2の入力ファイルを人が確認、リポジトリ外の秘密鍵で承認JSONに署名。署名と公開鍵を設定。`SDD_CHANGE_ID=CHG-001`をClaude環境に設定。
-6. **NET承認:** 実際に隔離されたテストネットワーク・テストDB・人工データ・Trace保存ポリシーを人が確認、NET JSONに署名。
+5. **G2承認:** G2の入力ファイルを人が確認、別ターミナルから `python3 scripts/approval_gate.py record-g2 --change-id CHG-001` を実行。`SDD_CHANGE_ID=CHG-001`をClaude環境に設定。
+6. **NET承認:** 実際に隔離されたテストネットワーク・テストDB・人工データ・Trace保存ポリシーを人が確認、別ターミナルで `record-net` を実行（接続先と隔離方式を指定）。
 7. G2承認後にClaude CodeがJava改修・JUnit/結合を実施。必要なら`run_java_tests.py`で結果を設定済み保存先へ集約。E2Eは`python3 scripts/run_java_tests.py --phase unit --change-id CHG-001
 # 結合テストコマンドを設定した場合:
 python3 scripts/run_java_tests.py --phase integration --change-id CHG-001
 python3 scripts/run_e2e.py --change-id CHG-001 --mode final`で実行。
-8. 設定済みE2E保存先の`CHG-001/<RUN-ID>/`にあるJUnit/スクリーンショット/Trace/summaryをレビュー。G6承認JSONを署名して検証。マージ・デプロイは別途人が判断。
+8. 設定済みE2E保存先の`CHG-001/<RUN-ID>/`にあるJUnit/スクリーンショット/Trace/summaryをレビュー。別ターミナルで `record-g6` を実行して検証。マージ・デプロイは別途人が判断。
 
 ## 代表コマンド
 
@@ -33,7 +33,7 @@ python3 scripts/toolchain.py doctor --phase e2e
 python3 scripts/toolchain.py resolve --approve-resolution
 python3 scripts/toolchain.py plan
 python3 scripts/toolchain.py install --apply --approve-downloads
-# 外部署名が配置された後:
+# 人間の承認記録を作成した後:
 python3 scripts/approval_gate.py verify-g2 --change-id CHG-001
 python3 scripts/run_e2e.py --change-id CHG-001 --mode final
 python3 scripts/approval_gate.py verify-g6 --change-id CHG-001 --run-dir reports/e2e/CHG-001/<RUN-ID>
@@ -53,8 +53,8 @@ python3 scripts/approval_gate.py verify-g6 --change-id CHG-001 --run-dir reports
 | 項目 | v5の実装 |
 |---|---|
 | R01 | Hookの文字列包含例外を廃止。複合シェルやG2前のコード変更を拒否（OS隔離は別途） |
-| R02 | G2/G6の署名検証、承認対象ハッシュとの照合。`approvals.md`は署名証明ではない |
-| R03 | NET署名付きの外部隔離確認が正式E2Eの前提。OSでの隔離を新規構築するわけではない |
+| R02 | 電子署名必須化は撤回。G2/G6の人間承認記録と対象ハッシュ照合を維持 |
+| R03 | NET承認と外部隔離確認が正式E2Eの前提。OSでの隔離を新規構築するわけではない |
 | R04 | dev部分テストを許可、finalはスキップ/0件/未実行/サンプルを拒否 |
 | R05 | `doctor --phase setup/dev/e2e`を分離。devにE2Eモジュール不要 |
 | R06 | `resolve --approve-resolution`が解決済Playwright版を記録し、変更時は再解決 |
@@ -73,13 +73,13 @@ python3 scripts/approval_gate.py verify-g6 --change-id CHG-001 --run-dir reports
 - `.claude/skills/{project-setup,tool-setup,spec-change}/SKILL.md`: 3 Skill
 - `.claude/agents/*.md`: Spec/Test/Developer/E2E/Independent Reviewer
 - `.claude/settings.json`: `onFailure: block`付きPreToolUse補助ガード
-- `scripts/approval_gate.py`, `scripts/v5_core.py`: G2/G6/NET署名・Gitスナップショット
+- `scripts/approval_gate.py`, `scripts/v5_core.py`: G2/G6/NET承認記録・Gitスナップショット
 - `scripts/toolchain.py`, `scripts/gradle/*`: phase別診断・実依存解決・Playwright browser取得
 - `scripts/artifact_paths.py`, `scripts/run_java_tests.py`: 保存先安全性、単体/結合の新規JUnit証跡
 - `scripts/prune_artifacts.py`: 保持期間超過の証跡を一覧表示・明示承認後に削除
 - `scripts/run_e2e.py`, `scripts/check_e2e_evidence.py`: Java E2E実行と証拠の収集/照合
 - `examples/playwright-java`: **DEMO_ONLY** Javaテスト雛形・EvidenceRecorder
-- `docs/ai/v5-operations.md`: 署名承認・NET隔離・運用の詳細手順
+- `docs/ai/v5-operations.md`: 人間承認・NET隔離・運用の詳細手順
 - `docs/ai/artifact-storage.md`: 保存先の設定・90日保持・旧v5からの移行
 
 ## オフライン自己テスト

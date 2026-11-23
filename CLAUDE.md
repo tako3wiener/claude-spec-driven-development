@@ -66,9 +66,9 @@
 - Traceはネットワーク/DOM内の秘密情報も含み得るため、低権限の隔離環境・架空データのみで実行する。スクリーンショットのマスクだけではTrace内の情報を保護できない。
 
 ## v5 追加強制ルール（最新版。v4の記述と矛盾する場合はこちらを優先）
-- `docs/ai/v5-operations.md`が手順の正本。G2/G6/NETは`approvals.md`の記載ではなく**外部署名のJSONとハッシュ**を検証する。Claudeは秘密鍵を扱わない。
+- `docs/ai/v5-operations.md`が手順の正本。G2/G6/NETは`approvals.md`の記載ではなく**人が記録した承認JSONと対象ハッシュ**を検証する。電子署名不要。Claudeは `record-g2/net/g6` を実行せず、承認ファイルを作成・変更しない。
 - 作業開始時に`SDD_CHANGE_ID`を確認。未承認G2でJavaコード改変・テスト実行は不可。`.claude/settings.json`のPreToolUseは補助ガード、実アクセス制限は外部管理。
-- NET署名で確認された**外部の隔離構成**がなければ正式E2Eを実行しない。署名は実際のファイアウォール/テストDBを生成しない。
+- NET承認で確認された**外部の隔離構成**がなければ正式E2Eを実行しない。承認記録は実際のファイアウォール/テストDBを生成しない。
 - 開発中の部分テスト(dev)と正式ゲート(final)を区別。finalでskip、0件、DEMO_ONLY、旧JUnit流用、証拠不一致を許可しない。
 - E2Eは`python3 scripts/run_e2e.py --change-id CHG-001 --mode final`だけで実行。PNG/Trace/JUnitとRUN_ID/snapshot-IDが合致した結果のみローカルPASSとする。
 - `toolchain.py resolve --approve-resolution`はMaven/Gradleプラグイン実行/ネットワークアクセスを伴うため人の個別承認が必要。doctor/planは診断のみ。

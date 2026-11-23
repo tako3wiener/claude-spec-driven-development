@@ -20,4 +20,9 @@
 - 重要な残課題:
 - コメント:
 
-> v5 注意：このMarkdown記録は**G2/G6署名承認の代替ではありません**。実承認は`.claude/local/approvals/<CHG>-G2.json/.sig`および`-G6.json/.sig`で、外部秘密鍵で署名する。`docs/ai/v5-operations.md`参照。
+## NET: E2E環境確認
+- 判定: PENDING
+- 接続先:
+- 実ネットワーク隔離・専用アカウント・人工データ・Trace保存許可:
+
+> v5.3: このMarkdownは確認用メモ。実際の承認は人が別ターミナルで `scripts/approval_gate.py record-g2/record-net/record-g6` を実行し、`.claude/local/approvals/<CHG>-<GATE>.json` を記録する。鍵・電子署名は不要。本人確認や改竄防止の証明ではない。
