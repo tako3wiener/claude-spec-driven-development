@@ -1,0 +1,9 @@
+// Final E2E only. Route JUnit XML into a fresh run-specific folder.
+allprojects {
+    tasks.withType(org.gradle.api.tasks.testing.Test).configureEach { t ->
+        def evidenceDir = System.getenv('E2E_JUNIT_DIR')
+        if (!evidenceDir) throw new GradleException('E2E_JUNIT_DIR is required')
+        t.reports.junitXml.required.set(true)
+        t.reports.junitXml.outputLocation.set(file(evidenceDir))
+    }
+}

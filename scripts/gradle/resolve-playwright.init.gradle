@@ -1,0 +1,14 @@
+// Run ONLY after explicit permission to resolve the project's dependencies.
+allprojects { project ->
+  tasks.register('sddResolvePlaywright') {
+    doLast {
+      def cfg = configurations.findByName('testRuntimeClasspath')
+      if (cfg == null) throw new GradleException('testRuntimeClasspath not configured')
+      def versions = cfg.resolvedConfiguration.resolvedArtifacts
+        .findAll { it.moduleVersion.id.group == 'com.microsoft.playwright' && it.name == 'playwright' }
+        .collect { it.moduleVersion.id.version }.unique()
+      if (versions.size() != 1) throw new GradleException('Expected exactly one Playwright version: ' + versions)
+      println 'SDD_PLAYWRIGHT_VERSION=' + versions[0]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "tooling_policy": "diagnose_first_install_only_after_explicit_human_approval",
+  "java_version": "from_existing_project",
+  "build_tool": "from_existing_project_wrapper_or_toolchain",
+  "e2e": "Playwright for Java + JUnit",
+  "browser": "chromium",
+  "browser_install": "com.microsoft.playwright.CLI install chromium using existing E2E module",
+  "os_packages_auto_install": false,
+  "system_tools_bundled": false,
+  "allow_prod_testing": false,
+  "approval_commands": [
+    "python3 scripts/toolchain.py plan",
+    "python3 scripts/toolchain.py install --apply --approve-downloads"
+  ]
+}

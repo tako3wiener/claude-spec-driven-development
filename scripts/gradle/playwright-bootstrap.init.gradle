@@ -1,0 +1,13 @@
+// Transient Gradle init script: registers a task without modifying the app build files.
+// Only execute after explicitly approving dependency/plugin network execution.
+gradle.beforeProject { p ->
+    p.plugins.withId('java') {
+        p.tasks.register('bootstrapPlaywrightBrowser', JavaExec) {
+            group = 'verification'
+            description = 'Install the Playwright browser matching the Java test dependency'
+            classpath = p.configurations.testRuntimeClasspath
+            mainClass.set('com.microsoft.playwright.CLI')
+            args 'install', (p.findProperty('pwBrowser') ?: 'chromium').toString()
+        }
+    }
+}

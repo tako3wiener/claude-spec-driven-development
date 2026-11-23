@@ -1,0 +1,10 @@
+// Route all JUnit XML to the fresh run-scoped evidence directory.
+allprojects {
+    tasks.withType(org.gradle.api.tasks.testing.Test).configureEach { t ->
+        def root = System.getenv('JAVA_JUNIT_DIR')
+        if (!root) throw new GradleException('JAVA_JUNIT_DIR is required')
+        t.reports.junitXml.required.set(true)
+        // Distinct subdirectories avoid clobbering different test tasks/modules.
+        t.reports.junitXml.outputLocation.set(file(root + '/' + t.path.replace(':', '_')))
+    }
+}

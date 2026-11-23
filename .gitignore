@@ -1,0 +1,18 @@
+# E2E screenshots, trace, and manifests may include sensitive data.
+reports/e2e/
+reports/test-results/
+examples/playwright-java/target/
+
+# Machine-local codebase and E2E environment config: never commit.
+.claude/local/
+
+# Other local secrets and build artifacts
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+**/__pycache__/
+**/.pytest_cache/
+**/target/
+**/build/

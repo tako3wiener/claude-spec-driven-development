@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -fd *)",
+      "Bash(rm -rf *)",
+      "Bash(kubectl *)",
+      "Bash(terraform apply *)",
+      "Bash(./mvnw deploy *)",
+      "Bash(mvn deploy *)",
+      "Bash(./gradlew publish *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(docker compose *)",
+      "Bash(docker-compose *)",
+      "Bash(./mvnw flyway:migrate *)",
+      "Bash(./gradlew flywayMigrate *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/scripts/project_setup.py",
+              "session"
+            ],
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/scripts/guard_test_commands.py"
+            ],
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}
