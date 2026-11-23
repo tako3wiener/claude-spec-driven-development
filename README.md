@@ -1,4 +1,4 @@
-# Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.1（保存先設定拡張）
+# Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.3
 
 **現状:** v5スターター実装／実ユーザー環境への組み込み・ブラウザ実起動は未検証。v4から改修した新規成果物。仕様書→G2承認→Java実装→JUnit/結合→Playwright for Java E2E・PNG/Trace→独立レビュー→G6承認を支援する。外部のGateway/OSサンドボックスは同梱されない。
 
@@ -9,7 +9,151 @@
 - **Luna利用には独自Gatewayの互換性実証が必要。** Anthropicは非ClaudeモデルへのGateway利用をサポート対象として保証していない。モデル名だけでは接続・ツール呼び出しの成功を保証しない。
 - R12（CI強制）は保留なので、ローカルの証跡PASSを独立CIの真正性証明と誤認しない。
 
-## 初期導入（手順は docs/ai/v5-operations.md を参照）
+## インストール方法（初回導入）
+
+このツールは既存のJava WebアプリのGitリポジトリにスクリプト、Claude Code Skills/Agents、設定、テンプレートを組み込んで使います。ツール自身のリポジトリをJavaアプリの開発対象にする必要はありません。ダッシュボードは任意の別アプリです。
+
+### 1. 前提環境
+
+- Git、Python 3.9以降（`python3`）、Claude Code CLI（`claude`）。Claude Codeは別途インストール・認証を済ませる。
+- 対象アプリに適合するJDK、MavenまたはGradle（既存のWrapperがあれば優先）。Playwright for Java、対応ブラウザ・OS依存ライブラリはE2E用に別途準備する。
+- GitHubのPrivateリポジトリにアクセス可能なGit認証。HTTPSならGit Credential Manager等、または設定済みSSHを使う。トークンをURL・ソース・設定ファイルに書かない。
+- 以下のコピー例はmacOS/Linux/WSLのBashと`rsync`を使用。WindowsでWSLを使わない場合は同じフォルダ構成をエクスプローラー等で手動統合する。
+
+```bash
+git --version
+python3 --version
+claude --version
+java -version
+```
+
+JDKとビルドツールの版は対象アプリの既存要件に従う。G2/NET/G6の通常承認にOpenSSL・秘密鍵は不要（R19の任意のGateway署名検証は別機能）。
+
+### 2. スターターを取得する
+
+既存のJavaプロジェクトとは別の場所へcloneする。以下のパスは例なので自分の環境に読み替える。
+
+```bash
+mkdir -p "$HOME/work"
+cd "$HOME/work"
+git clone https://github.com/tako3wiener/claude-spec-driven-development.git
+STARTER="$HOME/work/claude-spec-driven-development"
+APP="$HOME/work/your-java-project"
+```
+
+SSHを利用する場合は `git clone git@github.com:tako3wiener/claude-spec-driven-development.git` でもよい。Privateリポジトリのため、GitHubに未認証または権限がない場合は取得できない。
+
+### 3. 既存Javaリポジトリに組み込む
+
+対象アプリの未コミット変更を退避またはコミットしてから、作業ブランチを作成する。既存の設定やソースを一括上書きしない。
+
+```bash
+cd "$APP"
+git rev-parse --show-toplevel
+git status --short
+# 作業ツリーがクリーンであり、APPがGitルートであることを確認してから実行
+git switch -c chore/install-sdd
+```
+
+組み込む対象は `CLAUDE.md`、`.claude/settings.json`、`.claude/skills/`、`.claude/agents/`、`scripts/`、`templates/`、`docs/ai/`、`examples/playwright-java/`、`.gitignore`。以下は既存ファイルを上書きしないコピー例。最初は必ずdry-runを確認する。
+
+```bash
+# 追加予定ファイルを確認（既存ファイルはスキップ）
+rsync -rni --ignore-existing \
+  --exclude='/.git/' --exclude='/README.md' \
+  --exclude='/.claude/local/' --exclude='/reports/' \
+  "$STARTER/" "$APP/"
+
+# 同名の既存ファイルで内容が異なるものを確認（コピーは行わない）
+rsync -rnic --existing \
+  --exclude='/.git/' --exclude='/README.md' \
+  --exclude='/.claude/local/' --exclude='/reports/' \
+  "$STARTER/" "$APP/"
+
+# 内容を確認してから追加分のみコピー
+rsync -ri --ignore-existing \
+  --exclude='/.git/' --exclude='/README.md' \
+  --exclude='/.claude/local/' --exclude='/reports/' \
+  "$STARTER/" "$APP/"
+```
+
+既存の `CLAUDE.md`、`.claude/settings.json`、`.gitignore` やスクリプト等に同名ファイルがある場合は差分を確認し、必要なSkills/Agents、permissions、SessionStart/PreToolUse Hook、除外ルールを手動統合する。JSONは有効な形式を維持し、既存Hookも消さない。特に `.claude/local/` とテスト証跡、秘密情報をGit管理対象にしない。
+
+```bash
+cd "$APP"
+git status --short
+git diff
+python3 -m json.tool .claude/settings.json
+python3 -m compileall -q scripts
+python3 -m unittest discover -v -s scripts/tests
+```
+
+テストで既存アプリへ接続する必要はない。既存の同名テストがある場合は内容を確認して実行する。変更内容をレビューして対象プロジェクトの運用に従いコミットする。ここでは本番環境への接続やデプロイは行わない。
+
+### 4. プロジェクト初期設定とツール診断
+
+JavaリポジトリのルートでClaude Codeを起動する。
+
+```bash
+cd "$APP"
+claude
+```
+
+Claude Code内で順番に実行する。
+
+```text
+/project-setup
+/tool-setup
+```
+
+`/project-setup`では対象Javaモジュール、local/test/stagingのURL、単体・結合・E2Eのコマンド、保存先（既定: `reports/test-results` と `reports/e2e`）、保持期間（既定90日）を確認する。設定は `.claude/local/project-env.json` に保存される。必要なら通常のターミナルから `python3 scripts/project_setup.py init` で対話設定してもよい。
+
+`/tool-setup`ではJDK、ビルドツール、Playwright Java、ブラウザの準備状況を診断する。依存解決・ダウンロードは内容を人が承認した後だけ実行する。G2前のHookで解決・インストール操作が拒否された場合は、承認済みのコマンドを人が別ターミナルから実行する（Hookを無効にしない）。
+
+```bash
+python3 scripts/project_setup.py check
+python3 scripts/toolchain.py doctor --phase setup
+python3 scripts/toolchain.py doctor --phase dev
+python3 scripts/toolchain.py doctor --phase e2e
+```
+
+Claude Code内で `/hooks` などを利用して設定が読み込まれていることを確認する。実際のE2E対象アプリ専用のPlaywright Java/JUnitテストと外部ネットワーク隔離も準備する。`examples/playwright-java` はDEMO_ONLYで正式テストには使用できない。
+
+### 5. 仕様駆動開発を開始する
+
+対象アプリ内の `docs/spec/` に仕様書を配置する（ディレクトリがなければ作成）。変更IDを決めてClaude Codeを起動する。
+
+```bash
+cd "$APP"
+mkdir -p docs/spec
+export SDD_CHANGE_ID=CHG-001
+claude
+```
+
+Claude Code内で実行する。
+
+```text
+/spec-change CHG-001
+```
+
+G2で待機したら、仕様・影響・テストケースを確認し、**別の通常のターミナル**で対象アプリのGitルートに移動して承認を記録する。
+
+```bash
+cd "$APP"   # 別ターミナルではAPPを設定するか実際の絶対パスを指定
+python3 scripts/approval_gate.py record-g2 --change-id CHG-001
+```
+
+承認者名と確認文字列を入力し、Claude Code側で続行する。NET・G6も同様に人が記録する。URL・隔離方式・RUN-IDの指定方法を含む詳細は [運用手順](docs/ai/v5-operations.md) を参照。鍵や署名ファイルは不要。
+
+### 6. 更新・アンインストール
+
+スターター側で `git pull --ff-only` を実行しただけでは、導入済みJavaプロジェクトには反映されない。更新のたびに差分を確認し、対象アプリの新しい作業ブランチで必要なファイルを統合して自己テストを実行する。ローカル設定・承認・証跡は自動上書きしない。設定や承認対象が変わった場合は再承認する。
+
+取り外す場合は導入時のGitコミット・差分を基に、追加されたファイルと既存設定へ統合した部分だけを削除する。アプリ固有コード、仕様書、承認記録、テスト証跡を一括削除しない。
+
+進捗の可視化が必要なら、別途 [Spec Change Dashboard](https://github.com/tako3wiener/spec-change-dashboard) を取得し、そのREADMEに従って起動する。導入しなくても本ツールは動作する。
+
+## 開発フローの概要（手順は docs/ai/v5-operations.md を参照）
 
 1. v4をバックアップ。v5を既存Gitリポジトリのルートへ配置し、既存の`CLAUDE.md`と`.claude/settings.json`を**上書きせずに統合**。
 2. `claude`を起動、`/project-setup`でコードベース・テスト用URL・正式なJava E2Eコマンドを確認。`examples/`は`DEMO_ONLY`。
@@ -17,10 +161,7 @@
 4. `docs/spec/`に原本仕様書、`docs/changes/CHG-001/`に解析結果・変更設計と期待結果を作成。
 5. **G2承認:** G2の入力ファイルを人が確認、別ターミナルから `python3 scripts/approval_gate.py record-g2 --change-id CHG-001` を実行。`SDD_CHANGE_ID=CHG-001`をClaude環境に設定。
 6. **NET承認:** 実際に隔離されたテストネットワーク・テストDB・人工データ・Trace保存ポリシーを人が確認、別ターミナルで `record-net` を実行（接続先と隔離方式を指定）。
-7. G2承認後にClaude CodeがJava改修・JUnit/結合を実施。必要なら`run_java_tests.py`で結果を設定済み保存先へ集約。E2Eは`python3 scripts/run_java_tests.py --phase unit --change-id CHG-001
-# 結合テストコマンドを設定した場合:
-python3 scripts/run_java_tests.py --phase integration --change-id CHG-001
-python3 scripts/run_e2e.py --change-id CHG-001 --mode final`で実行。
+7. G2承認後にClaude CodeがJava改修・JUnit/結合を実施。`run_java_tests.py` で単体・結合結果を集約し、NET承認後に `run_e2e.py --change-id CHG-001 --mode final` で正式E2Eを実行する。
 8. 設定済みE2E保存先の`CHG-001/<RUN-ID>/`にあるJUnit/スクリーンショット/Trace/summaryをレビュー。別ターミナルで `record-g6` を実行して検証。マージ・デプロイは別途人が判断。
 
 ## 代表コマンド
