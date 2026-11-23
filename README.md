@@ -1,4 +1,4 @@
-# Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.3
+# Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.3.1
 
 **現状:** v5スターター実装／実ユーザー環境への組み込み・ブラウザ実起動は未検証。v4から改修した新規成果物。仕様書→G2承認→Java実装→JUnit/結合→Playwright for Java E2E・PNG/Trace→独立レビュー→G6承認を支援する。外部のGateway/OSサンドボックスは同梱されない。
 
@@ -9,7 +9,76 @@
 - **Luna利用には独自Gatewayの互換性実証が必要。** Anthropicは非ClaudeモデルへのGateway利用をサポート対象として保証していない。モデル名だけでは接続・ツール呼び出しの成功を保証しない。
 - R12（CI強制）は保留なので、ローカルの証跡PASSを独立CIの真正性証明と誤認しない。
 
-## インストール方法（初回導入）
+## クイックインストール（v5.3.1）
+
+対象の**既存JavaプロジェクトのGitリポジトリ**で実行します。インストーラーがスターター一式を配置し、Claude Codeの設定を統合するため、手動コピーやrsyncは不要です。Javaアプリ本体、既存のローカル設定・承認・テスト証跡は変更しません。
+
+### 方法A：npxで1コマンド（推奨）
+
+前提：Git、Node.js 18以降・npm/npx、Python 3.9以降（`python3`）、対象PrivateリポジトリへのGit認証。Claude Code CLIは別途インストール・認証済みであること。
+
+```bash
+cd /path/to/your-java-project
+npx --yes --package="git+ssh://git@github.com/tako3wiener/claude-spec-driven-development.git#main" sdd-install
+```
+
+SSH鍵を設定していない場合は、Git Credential ManagerなどのHTTPS認証を利用する次の形式でも取得できます。
+
+```bash
+npx --yes --package="git+https://github.com/tako3wiener/claude-spec-driven-development.git#main" sdd-install
+```
+
+npmレジストリへ公開する必要はありません。PrivateリポジトリをGit認証で取得して実行します。npmの確認を省略する `--yes` は、GitHubの認証やリポジトリ権限を省略するものではありません。認証情報をURLに埋め込まないでください。信頼できるリビジョンを確認して実行し、版を固定する場合は `#main` の代わりに対象のコミットSHAを指定します。
+
+事前確認だけの場合は末尾に `--dry-run`、別の対象Gitリポジトリを指定する場合は `--target /path/to/project` を追加します。
+
+### 方法B：install.sh（Node.js不要）
+
+GitとPython 3.9以降、Bashがあれば利用できます。
+
+```bash
+# スターターはJavaプロジェクトの外側にcloneする
+git clone https://github.com/tako3wiener/claude-spec-driven-development.git "$HOME/sdd-starter"
+cd /path/to/your-java-project
+bash "$HOME/sdd-starter/install.sh"
+```
+
+WindowsなどでBashがない場合は、同じ取得済みスターターの `install.py` を `python3 /path/to/sdd-starter/install.py --target /path/to/your-java-project` で実行できます。スターターのcloneは再利用できます。
+
+### インストール完了後
+
+```bash
+git status --short
+git diff
+claude
+```
+
+Claude Code内で初回に次を実行します。
+
+```text
+/project-setup
+/tool-setup
+```
+
+対象Javaモジュール、テスト接続先、テストコマンド、証跡保存先の確定は引き続き人が確認します。依存解決、ブラウザ取得、ネットワーク接続、実アプリのテストはインストール時に勝手に実行しません。仕様書を `docs/spec/` に配置した後、変更IDを設定して `/spec-change CHG-001` を実行します。詳しくは下記の従来手順4〜5を参照してください。
+
+### 自動統合・更新の安全性
+
+- Skills、Agents、スクリプト、テンプレート、ガイド、Java E2E雛形を配置。既存Javaコード、README、`.claude/local/`、`reports/`、仕様・変更資料は対象外。
+- `CLAUDE.md` と `.gitignore` はSDD専用の管理ブロックとして統合。`.claude/settings.json` の既存ルールやHookは保持し、必要な設定を追加します（JSONの整形は変わる場合があります）。
+- 同じ内容は再コピーしません。通常ファイルの所有・ハッシュは `.claude/sdd-install.json` に記録します。未変更の管理対象ファイルは再実行で更新でき、既存ファイルの競合や利用者による管理対象の編集を検知した場合は書込み前に停止します。
+- 既存の設定でHook全体が無効化されている場合や同じHookの定義が競合する場合も停止します。既存Hookの削除や強制上書きは行いません。手動導入済みの旧版に差分がある場合は、従来の手動統合手順で解決してください。
+- 同じコマンドの再実行でインストーラー管理対象の更新が可能です。削除された旧ファイルや旧設定の自動削除は行いません。導入・更新後にGit差分を確認し、対象プロジェクトの運用に従ってコミットします。
+- インストール自体はGitコミット、push、デプロイ、秘密鍵の作成を行いません。ダッシュボードの導入も不要です。
+
+インストーラー単体の回帰テスト（スターターのリポジトリで実行）:
+
+```bash
+python3 -m unittest discover -s installer_tests -v
+npm pack --dry-run
+```
+
+## 従来の手動インストール方法（詳細・競合解消用）
 
 このツールは既存のJava WebアプリのGitリポジトリにスクリプト、Claude Code Skills/Agents、設定、テンプレートを組み込んで使います。ツール自身のリポジトリをJavaアプリの開発対象にする必要はありません。ダッシュボードは任意の別アプリです。
 
@@ -147,7 +216,7 @@ python3 scripts/approval_gate.py record-g2 --change-id CHG-001
 
 ### 6. 更新・アンインストール
 
-スターター側で `git pull --ff-only` を実行しただけでは、導入済みJavaプロジェクトには反映されない。更新のたびに差分を確認し、対象アプリの新しい作業ブランチで必要なファイルを統合して自己テストを実行する。ローカル設定・承認・証跡は自動上書きしない。設定や承認対象が変わった場合は再承認する。
+インストーラーで導入した場合は、対象プロジェクトで上記npxコマンドを再実行するか、取得済みスターターを `git pull --ff-only` で更新して `install.sh` を再実行する。スターター側で `git pull --ff-only` を実行しただけでは、導入済みJavaプロジェクトには反映されない。更新のたびに差分を確認し、対象アプリの新しい作業ブランチで必要なファイルを統合して自己テストを実行する。ローカル設定・承認・証跡は自動上書きしない。設定や承認対象が変わった場合は再承認する。
 
 取り外す場合は導入時のGitコミット・差分を基に、追加されたファイルと既存設定へ統合した部分だけを削除する。アプリ固有コード、仕様書、承認記録、テスト証跡を一括削除しない。
 

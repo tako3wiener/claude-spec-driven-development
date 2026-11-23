@@ -1,0 +1,9 @@
+{
+  "name": "claude-spec-driven-development",
+  "version": "5.3.1",
+  "private": true,
+  "description": "Install the SDD starter into an existing Java Git repository",
+  "bin": { "sdd-install": "bin/sdd-install.js" },
+  "engines": { "node": ">=18" },
+  "files": ["bin/", "install.py", "install.sh", "CLAUDE.md", ".claude/agents/", ".claude/skills/", ".claude/settings.json", "scripts/", "templates/", "docs/ai/", "examples/playwright-java/", "installer-gitignore.txt", "README.md"]
+}
