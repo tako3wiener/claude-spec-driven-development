@@ -19,7 +19,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-from project_setup import ROOT, CONFIG, SetupError, ensure_inside_root, load_config, validate
+from project_setup import ROOT, KIT_ROOT, CONFIG, SetupError, ensure_inside_root, load_config, validate
 
 LOCK = ROOT / '.claude' / 'local' / 'toolchain-lock.json'
 BROWSERS = {'chromium', 'firefox', 'webkit'}
@@ -213,7 +213,7 @@ def resolve_dependency(cfg, approve=False):
             out=Path(tmp)/'tree.txt'
             cmd=[runner,'-f',str(file),'dependency:tree','-Dincludes=com.microsoft.playwright:playwright','-DoutputType=text',f'-DoutputFile={out}']
         else:
-            cmd=[runner,'-p',str(workdir),'-I',str(ROOT/'scripts/gradle/resolve-playwright.init.gradle'),'sddResolvePlaywright']
+            cmd=[runner,'-p',str(workdir),'-I',str(KIT_ROOT/'scripts/gradle/resolve-playwright.init.gradle'),'sddResolvePlaywright']
         try:
             proc=subprocess.run(cmd,cwd=workdir,capture_output=True,text=True,timeout=300,check=False)
         except (OSError,subprocess.TimeoutExpired) as ex:
@@ -290,7 +290,7 @@ def plan(cfg: dict, browser: str) -> dict:
         argv = [exe or 'mvn', '-f', str(file), 'test-compile', 'exec:java', '-Dexec.classpathScope=test',
                 '-Dexec.mainClass=com.microsoft.playwright.CLI', f'-Dexec.args=install {browser}']
     else:
-        argv = [exe or 'gradle', '-p', str(workdir), '-I', str(ROOT / 'scripts' / 'gradle' / 'playwright-bootstrap.init.gradle'),
+        argv = [exe or 'gradle', '-p', str(workdir), '-I', str(KIT_ROOT / 'scripts' / 'gradle' / 'playwright-bootstrap.init.gradle'),
                 'bootstrapPlaywrightBrowser', f'-PpwBrowser={browser}']
     return {'profile': {'codebase': cfg['codebase'], 'test_env': cfg['environment'],
                         'e2e_workdir': cfg['e2e_workdir'], 'project_file': str(file.relative_to(ROOT)),

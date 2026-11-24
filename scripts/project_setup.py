@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Local repository/test-environment setup for Claude Code. Standard library only.
 
-The selected repository is the directory containing this starter kit. It is intentionally
-not possible to point Claude at an unrelated repository from the same running session.
+Legacy mode uses the kit directory. Standalone sessions bind a single selected
+Git root via SDD_PROJECT_ROOT and run in that filesystem context.
 """
 from __future__ import annotations
 
@@ -20,7 +20,9 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from artifact_paths import (DEFAULT_TEST_RESULTS, DEFAULT_E2E_EVIDENCE, DEFAULT_RETENTION_DAYS,
                             artifact_settings, artifact_root, ensure_untracked_destination, update_gitignore)
 
-ROOT = Path(__file__).resolve().parent.parent
+KIT_ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get('SDD_PROJECT_ROOT', str(KIT_ROOT))).resolve()
+EXECUTION_CONTEXT = os.environ.get('SDD_EXECUTION_CONTEXT')
 CONFIG = ROOT / '.claude' / 'local' / 'project-env.json'
 PROFILE = ROOT / '.claude' / 'local' / 'project-profile.md'
 ALLOWED_ENV_NAMES = {'local', 'test', 'staging'}
@@ -30,13 +32,17 @@ from setup_errors import SetupError
 
 
 def git_root() -> Path:
+    if EXECUTION_CONTEXT not in (None, 'local', 'devcontainer'):
+        raise SetupError('Invalid SDD execution context')
+    if os.environ.get('SDD_PROJECT_ROOT') and (ROOT.is_relative_to(KIT_ROOT) or KIT_ROOT.is_relative_to(ROOT)):
+        raise SetupError('Tool installation and Git repository must be separate')
     p = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', '--show-toplevel'],
                        capture_output=True, text=True, check=False)
     if p.returncode != 0 or not p.stdout.strip():
-        raise SetupError('Gitリポジトリではありません。既存Gitリポジトリのルートにキットを配置してください。')
+        raise SetupError('選択されたコードベースがGitリポジトリではありません。実行環境とパスを確認してください。')
     result = Path(p.stdout.strip()).resolve()
     if result != ROOT.resolve():
-        raise SetupError(f'キットの配置先 {ROOT} がGitルート {result} と異なります。リポジトリのルートで起動してください。')
+        raise SetupError(f'選択されたコードベース {ROOT} がGitルート {result} と異なります。リポジトリのルートを指定してください。')
     return result
 
 
@@ -110,6 +116,8 @@ def load_config() -> dict:
 
 def validate(config: dict, *, cwd: str | None = None) -> dict:
     repo = git_root()
+    if EXECUTION_CONTEXT is not None and config.get('execution_context') != EXECUTION_CONTEXT:
+        raise SetupError('実行環境(local/devcontainer)が設定時と異なります。対象環境で /project-setup を再実行してください。')
     if config.get('schema_version') != 1 or not config.get('confirmed_codebase') or not config.get('confirmed_isolated'):
         raise SetupError('設定形式または確認フラグが不正です。/project-setup で再設定してください。')
     if Path(config.get('git_root', '/missing')).resolve() != repo:
@@ -172,7 +180,7 @@ def main_init(args: argparse.Namespace) -> None:
             raise SetupError('非対話セットアップには全項目と --confirm-codebase --confirm-isolated が必須です。不足: '+','.join(missing))
     elif not sys.stdin.isatty():
         raise SetupError('対話端末ではありません。/project-setup経由で値を確認し、--non-interactiveを使ってください。')
-    print(f'Gitルート: {repo}')
+    print(f'Gitルート: {repo} / execution={EXECUTION_CONTEXT or "legacy"}')
     code_text = args.codebase if args.codebase is not None else prompt('対象Javaコードベース（Gitルートからの相対パス）', '.')
     code, rel = ensure_inside_root(code_text)
     build = detect_build(code)
@@ -238,6 +246,8 @@ def main_init(args: argparse.Namespace) -> None:
         'confirmed_isolated': True,
         'configured_at_utc': datetime.now(timezone.utc).isoformat(timespec='seconds'),
     }
+    if EXECUTION_CONTEXT is not None:
+        doc['execution_context'] = EXECUTION_CONTEXT
     validate(doc)
     ensure_untracked_destination(repo, doc)
     update_gitignore(repo, doc)

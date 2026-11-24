@@ -16,3 +16,7 @@ examples/playwright-java/target/
 **/.pytest_cache/
 **/target/
 **/build/
+
+# Standalone installation metadata and machine-specific workspace profiles
+/.sdd-workspaces.json
+/.sdd-install.json

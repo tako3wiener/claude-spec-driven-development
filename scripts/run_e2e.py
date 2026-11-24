@@ -17,7 +17,7 @@ import sys
 import secrets
 from datetime import datetime, timezone
 
-from project_setup import ROOT, SetupError, load_config, validate, ensure_inside_root
+from project_setup import ROOT, KIT_ROOT, CONFIG, EXECUTION_CONTEXT, SetupError, load_config, validate, ensure_inside_root
 from v5_core import (CHANGE_RE, RUN_RE, new_run_id, snapshot, verify_approval,
                      atomic_json, digest, file_digest, utcnow)
 from check_e2e_evidence import verify
@@ -53,7 +53,7 @@ def approved_command(cfg,mode,junit):
         argv += [f'-Dsurefire.reportsDirectory={junit}',f'-Dfailsafe.reportsDirectory={junit}',
                  '-DfailIfNoTests=true','-Dsurefire.failIfNoSpecifiedTests=true']
     elif runner in ('gradle','gradlew'):
-        argv += ['--no-build-cache','--rerun-tasks','-I',str(ROOT/'scripts/gradle/e2e-junit.init.gradle')]
+        argv += ['--no-build-cache','--rerun-tasks','-I',str(KIT_ROOT/'scripts/gradle/e2e-junit.init.gradle')]
     else:raise SetupError('Unsupported build runner')
     return argv
 
@@ -107,6 +107,8 @@ def run(args):
          'snapshot_id':repo_snapshot['snapshot_id'],'git':repo_snapshot,
          'runner_token_digest':digest(token.encode()),'command':argv,
          'execution_finished':False,'command_exit_code':None,'provenance_level':'local-unattested'}
+    if EXECUTION_CONTEXT is not None:
+        ctx.update(execution_context=EXECUTION_CONTEXT,project_config_hash=file_digest(CONFIG))
     atomic_json(rundir/'run-context.json',ctx)
     env=os.environ.copy()
     env.update({'E2E_BASE_URL':cfg['base_url'],'E2E_ALLOWED_ORIGIN':cfg['allowed_origin'],
@@ -134,12 +136,20 @@ def run(args):
             errs.append('Code snapshot changed while E2E was running')
     except SetupError as ex:
         errs.append('Post-run git snapshot failed: '+str(ex))
+    if EXECUTION_CONTEXT is not None:
+        try:
+            if file_digest(CONFIG)!=ctx['project_config_hash']:
+                errs.append('Project/execution configuration changed during E2E')
+        except OSError:
+            errs.append('Project/execution configuration disappeared during E2E')
     make_index(rundir)
     outcome='PASS' if not errs else ('FAIL' if code not in (0,2) else 'BLOCKED')
     result={'schema_version':2,'change_id':args.change_id,'run_id':runid,
        'snapshot_id':repo_snapshot['snapshot_id'],'status':outcome,
        'executor_exit_code':code,'errors':errs,'finished_at_utc':utcnow(),
        'independent_execution_attested':False}
+    if EXECUTION_CONTEXT is not None:
+        result.update(execution_context=EXECUTION_CONTEXT,project_config_hash=ctx['project_config_hash'])
     atomic_json(rundir/'verification.json',{'errors':errs,'format_and_crosscheck_passed':not errs})
     atomic_json(rundir/'summary.json',result)
     with (rundir/'test_results.csv').open('w',encoding='utf-8',newline='') as file:

@@ -15,7 +15,7 @@ import secrets
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get('SDD_PROJECT_ROOT', str(Path(__file__).resolve().parent.parent))).resolve()
 CHANGE = re.compile(r'CHG-[0-9]+\Z')
 GATES = {f'G{i}' for i in range(7)}
 STATES = {'running', 'waiting', 'blocked', 'done'}
@@ -27,7 +27,7 @@ def _git(*args):
     except Exception:return ''  # Optional telemetry must tolerate test runner stubs and git failures
 
 def record(change_id, gate, state, next_action='', note='', source='workflow'):
-    """Best-effort status hint; only signed approval_gate verification authorizes G2/G6."""
+    """Best-effort status hint; only approval_gate verification authorizes G2/G6."""
     if not CHANGE.fullmatch(change_id):raise ValueError('Invalid change ID')
     if gate not in GATES or state not in STATES:raise ValueError('Invalid gate/state')
     if source not in ('workflow','test-runner','approval-check'):

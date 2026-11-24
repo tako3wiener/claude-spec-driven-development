@@ -12,7 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
-from project_setup import ROOT, SetupError, load_config, validate, ensure_inside_root
+from project_setup import ROOT, KIT_ROOT, SetupError, load_config, validate, ensure_inside_root
 from artifact_paths import artifact_root, artifact_settings
 from v5_core import CHANGE_RE, RUN_RE, new_run_id, snapshot, atomic_json, utcnow, verify_approval
 
@@ -55,7 +55,7 @@ def build_command(cfg: dict, phase: str, junit: Path) -> list[str]:
                  f'-Dfailsafe.reportsDirectory={junit}']
     elif executor in ('gradle','gradlew'):
         argv += ['--no-build-cache','--rerun-tasks','-I',
-                 str(ROOT/'scripts/gradle/java-junit.init.gradle')]
+                 str(KIT_ROOT/'scripts/gradle/java-junit.init.gradle')]
     else: raise SetupError('Only Maven/Gradle commands are supported')
     return argv
 

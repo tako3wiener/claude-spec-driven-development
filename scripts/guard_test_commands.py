@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import shlex
 import sys
-from project_setup import ROOT, SetupError, load_config, validate
+from project_setup import ROOT, KIT_ROOT, SetupError, load_config, validate
 from v5_core import verify_approval
 
 READ_GIT={'status','diff','show','log','rev-parse','ls-files','branch'}
@@ -29,6 +29,8 @@ def reject(message):
 def active_change():
     env=os.environ.get('SDD_CHANGE_ID','')
     if re.fullmatch(r'CHG-[0-9]+',env): return env
+    if os.environ.get('SDD_PROJECT_ROOT'):
+        return None  # Standalone change ID must be fixed at launch.
     filename=ROOT/'.claude'/'local'/'active-change.json'
     if filename.is_file():
         data=json.loads(filename.read_text(encoding='utf-8'))
@@ -56,11 +58,15 @@ def allow_before_g2(command):
         return not any(x.startswith(('--output','--exec-path','-o','--config')) for x in argv[2:])
     if name in ('python3','python') and len(argv)>2:
         script=Path(argv[1]).as_posix()
+        if os.environ.get('SDD_PROJECT_ROOT'):
+            candidate=(ROOT/Path(argv[1])).resolve()
+            if candidate != (KIT_ROOT/'scripts'/Path(argv[1]).name).resolve():return False
         verb=argv[2]
         if script.endswith('scripts/project_setup.py') and verb in SETUP_VERBS:return True
         if script.endswith('scripts/toolchain.py') and verb in {'doctor','plan'}:return True
         if script.endswith('scripts/approval_gate.py') and verb in {'hashes','verify-g2','verify-net'}:return True
         if script.endswith('scripts/check_traceability.py'):return True
+        if script.endswith('scripts/progress.py'):return True
     return False
 
 
@@ -85,6 +91,8 @@ def main():
             if not current.is_relative_to(ROOT.resolve()):return reject('Tool cwd outside the selected codebase')
         if tool=='Bash':
             command=inp.get('command','')
+            if os.environ.get('SDD_PROJECT_ROOT') and isinstance(command,str) and re.search(r'\bSDD_(?:PROJECT_ROOT|EXECUTION_CONTEXT|CHANGE_ID)\s*=',command):
+                return reject('Session workspace and change ID are fixed at launch')
             if isinstance(command,str) and re.search(r'\brecord-(?:g2|net|g6)\b',command,re.I):
                 return reject('Only the human operator may record approval in a separate terminal')
             if allow_before_g2(command):return 0
@@ -93,7 +101,9 @@ def main():
         if tool in ('Write','Edit','MultiEdit','NotebookEdit'):
             path=inp.get('file_path') or inp.get('notebook_path')
             if isinstance(path,str):
-                target=(ROOT/Path(path)).resolve()
+                target=(Path(cwd or ROOT)/Path(path)).resolve()
+                if os.environ.get('SDD_PROJECT_ROOT') and not target.is_relative_to(ROOT):
+                    return reject('Tool installation and other workspaces are read-only')
                 if target.is_relative_to((ROOT/'.claude/local/approvals').resolve()):
                     return reject('Claude may not write human approval records')
         if tool not in ('Bash','Write','Edit','MultiEdit','NotebookEdit'):

@@ -13,7 +13,7 @@ import re
 import secrets
 import subprocess
 from datetime import datetime, timezone
-from project_setup import ROOT, SetupError
+from project_setup import ROOT, CONFIG, EXECUTION_CONTEXT, SetupError
 
 CHANGE_RE = re.compile(r'CHG-[0-9]+\Z')
 RUN_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,100}\Z')
@@ -150,6 +150,8 @@ def validate_approval_content(change_id, gate, content, *, context=None):
     else:
         if not context or content.get('allowed_origin') != context.get('allowed_origin'):
             raise SetupError('NET attestation does not match this origin')
+        if EXECUTION_CONTEXT is not None and content.get('project_config_hash') != file_digest(CONFIG):
+            raise SetupError('NET approval is stale: project/execution configuration changed')
         if content.get('isolation_mode') not in ('container-egress-policy','network-firewall','dedicated-isolated-host'):
             raise SetupError('NET attestation requires a verified external network isolation mode')
         if content.get('dedicated_test_credentials') is not True:

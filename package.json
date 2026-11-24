@@ -1,8 +1,8 @@
 {
   "name": "claude-spec-driven-development",
-  "version": "5.3.2",
+  "version": "5.4.0",
   "private": true,
-  "description": "Install the SDD starter into an existing Java Git repository",
+  "description": "Install SDD independently, then select a local or Dev Container Java Git repository",
   "bin": {
     "sdd-install": "bin/sdd-install.js",
     "sdd-uninstall": "bin/sdd-uninstall.js"
@@ -24,6 +24,16 @@
     "examples/playwright-java/",
     "installer-gitignore.txt",
     "README.md",
-    "uninstall.sh"
+    "uninstall.sh",
+    "standalone.py",
+    "sdd",
+    "!**/__pycache__/**",
+    "!**/*.pyc",
+    "!**/.pytest_cache/**",
+    "!**/target/**",
+    "!**/build/**",
+    "!**/*.pem",
+    "!**/*.key",
+    "!**/*.sig"
   ]
 }

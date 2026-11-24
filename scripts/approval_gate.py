@@ -6,9 +6,10 @@ not proof of identity. Claude must never record approvals on the user's behalf.
 """
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
-from project_setup import ROOT, SetupError, load_config
+from project_setup import ROOT, CONFIG, EXECUTION_CONTEXT, SetupError, load_config, validate
 from v5_core import (CHANGE_RE, plan_hashes, verify_approval, validate_approval_content,
                      file_digest, snapshot, atomic_json, utcnow)
 
@@ -22,6 +23,13 @@ def g6_context(run_dir):
         raise SetupError('G6 requires a local PASS report with honest provenance flags')
     if snapshot()['snapshot_id'] != run['snapshot_id']:
         raise SetupError('Worktree changed since E2E run')
+    if EXECUTION_CONTEXT is not None:
+        expected=file_digest(CONFIG)
+        if (run.get('repository_root') != str(ROOT) or
+                run.get('execution_context') != EXECUTION_CONTEXT or
+                run.get('project_config_hash') != expected or
+                summary.get('project_config_hash') != expected):
+            raise SetupError('E2E run belongs to a different project/execution configuration; rerun E2E')
     return {'run_id':run['run_id'],'snapshot_id':run['snapshot_id'],
             'summary_sha256':file_digest(run_dir/'summary.json')}
 
@@ -64,6 +72,8 @@ def main():
     try:
         if not CHANGE_RE.fullmatch(args.change_id):
             raise SetupError('Invalid change ID')
+        if EXECUTION_CONTEXT is not None:
+            validate(load_config(),cwd=os.getcwd())
         if args.action=='hashes':
             result=plan_hashes(args.change_id)
         else:
@@ -75,6 +85,8 @@ def main():
                 if not args.allowed_origin or args.allowed_origin!=configured:
                     raise SetupError('--allowed-origin must match project configuration')
                 context={'allowed_origin':configured}
+                if EXECUTION_CONTEXT is not None:
+                    context['project_config_hash']=file_digest(CONFIG)
             elif gate=='G6':
                 context=g6_context(args.run_dir)
             if operation=='record':
