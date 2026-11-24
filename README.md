@@ -1,4 +1,4 @@
-# Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.3.1
+# Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.3.2
 
 **現状:** v5スターター実装／実ユーザー環境への組み込み・ブラウザ実起動は未検証。v4から改修した新規成果物。仕様書→G2承認→Java実装→JUnit/結合→Playwright for Java E2E・PNG/Trace→独立レビュー→G6承認を支援する。外部のGateway/OSサンドボックスは同梱されない。
 
@@ -9,7 +9,7 @@
 - **Luna利用には独自Gatewayの互換性実証が必要。** Anthropicは非ClaudeモデルへのGateway利用をサポート対象として保証していない。モデル名だけでは接続・ツール呼び出しの成功を保証しない。
 - R12（CI強制）は保留なので、ローカルの証跡PASSを独立CIの真正性証明と誤認しない。
 
-## クイックインストール（v5.3.1）
+## クイックインストール（v5.3.2）
 
 対象の**既存JavaプロジェクトのGitリポジトリ**で実行します。インストーラーがスターター一式を配置し、Claude Codeの設定を統合するため、手動コピーやrsyncは不要です。Javaアプリ本体、既存のローカル設定・承認・テスト証跡は変更しません。
 
@@ -66,7 +66,7 @@ Claude Code内で初回に次を実行します。
 
 - Skills、Agents、スクリプト、テンプレート、ガイド、Java E2E雛形を配置。既存Javaコード、README、`.claude/local/`、`reports/`、仕様・変更資料は対象外。
 - `CLAUDE.md` と `.gitignore` はSDD専用の管理ブロックとして統合。`.claude/settings.json` の既存ルールやHookは保持し、必要な設定を追加します（JSONの整形は変わる場合があります）。
-- 同じ内容は再コピーしません。通常ファイルの所有・ハッシュは `.claude/sdd-install.json` に記録します。未変更の管理対象ファイルは再実行で更新でき、既存ファイルの競合や利用者による管理対象の編集を検知した場合は書込み前に停止します。
+- 同じ内容は再コピーしません。v5.3.2では追加ファイルの所有・ハッシュと設定の追加部分を `.claude/sdd-install.json` に記録します。導入前から存在した同一ファイルは削除対象にしません。未変更の管理対象ファイルは再実行で更新でき、既存ファイルの競合や利用者による管理対象の編集を検知した場合は書込み前に停止します。
 - 既存の設定でHook全体が無効化されている場合や同じHookの定義が競合する場合も停止します。既存Hookの削除や強制上書きは行いません。手動導入済みの旧版に差分がある場合は、従来の手動統合手順で解決してください。
 - 同じコマンドの再実行でインストーラー管理対象の更新が可能です。削除された旧ファイルや旧設定の自動削除は行いません。導入・更新後にGit差分を確認し、対象プロジェクトの運用に従ってコミットします。
 - インストール自体はGitコミット、push、デプロイ、秘密鍵の作成を行いません。ダッシュボードの導入も不要です。
@@ -77,6 +77,56 @@ Claude Code内で初回に次を実行します。
 python3 -m unittest discover -s installer_tests -v
 npm pack --dry-run
 ```
+
+
+## クイックアンインストール（v5.3.2）
+
+Claude Codeを終了し、対象JavaプロジェクトのGitルートで実行する。先にGitの作業ブランチと差分を確認し、削除予定を確認することを推奨する。
+
+### npx（推奨）
+
+```bash
+# 変更内容を事前確認（ファイルを変更しない）
+npx --yes --package="git+https://github.com/tako3wiener/claude-spec-driven-development.git#main" sdd-uninstall --dry-run
+
+# アンインストール実行
+npx --yes --package="git+https://github.com/tako3wiener/claude-spec-driven-development.git#main" sdd-uninstall
+```
+
+SSHを利用する場合はパッケージ指定を `git+ssh://git@github.com/tako3wiener/claude-spec-driven-development.git#main` に変更できる。`--target /path/to/project` で対象を指定できる。
+
+### シェル（Node.js不要）
+
+取得済みスターターを最新版に更新した後、対象プロジェクトで次を実行する。
+
+```bash
+bash "$HOME/sdd-starter/uninstall.sh" --dry-run
+bash "$HOME/sdd-starter/uninstall.sh"
+```
+
+Bashがない場合は `python3 /path/to/sdd-starter/install.py --uninstall` でも実行できる。
+
+### 削除するもの・残すもの
+
+- インストーラーが新規追加した未変更のSkills/Agents/スクリプト/テンプレート/ガイド/サンプルを削除する。既存の同一ファイルは共有ファイルとして残す。
+- CLAUDE.mdのSDD管理ブロック、settings.jsonに追加した権限・Hookだけを除去する。既存の記述・ルールや後から追加した別の設定は残す（JSONの整形が変わる場合がある）。
+- 既存Javaコード、docs/spec、docs/changes、.claude/local（承認、進捗、ローカル設定）、テスト証跡、資格情報、.gitignoreは**削除しない**。証跡や秘密情報を引き続きGit管理から除外するため、.gitignoreは意図的に維持する。空になったディレクトリも一括削除しない。
+- 管理ファイルやSDDの設定が変更されている、または残るHookが削除対象を参照している場合は、書込み前に停止する。競合を解決してから再実行する。Gitへのコミットやpushは実行しない。
+- 管理情報が存在しない場合は何も削除しない。手動導入は導入時のGit差分を確認して個別に取り外す。
+
+### 旧版v5.3.1で導入済みの場合
+
+旧版の管理情報（schema 1）は導入前から存在した同一ファイル・既存設定の所有情報を保持していない。そのため削除や新しい管理方式への移行には、**導入直前に作業ツリーがクリーンだったGitコミット**を明示する。導入時に未コミット・未追跡・無視対象の既存ファイルがあった場合、または正確なコミットを特定できない場合は自動削除を使用せず、手動で確認する。
+
+```bash
+# PRE_INSTALL_COMMITを実際の導入直前のコミットSHAに置き換える
+npx --yes --package="git+https://github.com/tako3wiener/claude-spec-driven-development.git#main" sdd-uninstall --baseline PRE_INSTALL_COMMIT --dry-run
+# 削除対象が正しいことを確認してから
+npx --yes --package="git+https://github.com/tako3wiener/claude-spec-driven-development.git#main" sdd-uninstall --baseline PRE_INSTALL_COMMIT
+```
+
+旧版からv5.3.2に更新して使い続ける場合は、同じ `--baseline PRE_INSTALL_COMMIT` を `sdd-install` または `install.sh` に付ける。新版の管理情報（schema 2）に移行した後は、以降の更新・アンインストールにbaselineは不要。
+
 
 ## 従来の手動インストール方法（詳細・競合解消用）
 
@@ -218,7 +268,7 @@ python3 scripts/approval_gate.py record-g2 --change-id CHG-001
 
 インストーラーで導入した場合は、対象プロジェクトで上記npxコマンドを再実行するか、取得済みスターターを `git pull --ff-only` で更新して `install.sh` を再実行する。スターター側で `git pull --ff-only` を実行しただけでは、導入済みJavaプロジェクトには反映されない。更新のたびに差分を確認し、対象アプリの新しい作業ブランチで必要なファイルを統合して自己テストを実行する。ローカル設定・承認・証跡は自動上書きしない。設定や承認対象が変わった場合は再承認する。
 
-取り外す場合は導入時のGitコミット・差分を基に、追加されたファイルと既存設定へ統合した部分だけを削除する。アプリ固有コード、仕様書、承認記録、テスト証跡を一括削除しない。
+インストーラーで導入した場合は上記クイックアンインストールを利用する。手動導入を取り外す場合は導入時のGitコミット・差分を基に、追加されたファイルと既存設定へ統合した部分だけを削除する。アプリ固有コード、仕様書、承認記録、テスト証跡を一括削除しない。
 
 進捗の可視化が必要なら、別途 [Spec Change Dashboard](https://github.com/tako3wiener/spec-change-dashboard) を取得し、そのREADMEに従って起動する。導入しなくても本ツールは動作する。
 
