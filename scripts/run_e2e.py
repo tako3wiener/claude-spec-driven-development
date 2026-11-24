@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 from project_setup import ROOT, KIT_ROOT, CONFIG, EXECUTION_CONTEXT, SetupError, load_config, validate, ensure_inside_root
 from v5_core import (CHANGE_RE, RUN_RE, new_run_id, snapshot, verify_approval,
-                     atomic_json, digest, file_digest, utcnow)
+                     atomic_json, digest, file_digest, utcnow, group_evidence_context)
 from check_e2e_evidence import verify
 from artifact_paths import artifact_root, artifact_settings
 
@@ -82,6 +82,7 @@ def run(args):
     verify_approval(args.change_id,'NET',context={'allowed_origin':cfg['allowed_origin']})
     if args.mode=='final':read_e2e_cases(args.change_id)
     repo_snapshot=snapshot()
+    group_context=group_evidence_context(args.change_id)
     rundir=artifact_root(ROOT,cfg,'e2e')/args.change_id/runid
     if rundir.exists():raise SetupError('RUN-ID already exists: '+str(rundir))
     argv=approved_command(cfg,args.mode,rundir/'junit')
@@ -109,6 +110,7 @@ def run(args):
          'execution_finished':False,'command_exit_code':None,'provenance_level':'local-unattested'}
     if EXECUTION_CONTEXT is not None:
         ctx.update(execution_context=EXECUTION_CONTEXT,project_config_hash=file_digest(CONFIG))
+    if group_context is not None:ctx['group_context']=group_context
     atomic_json(rundir/'run-context.json',ctx)
     env=os.environ.copy()
     env.update({'E2E_BASE_URL':cfg['base_url'],'E2E_ALLOWED_ORIGIN':cfg['allowed_origin'],
@@ -142,6 +144,12 @@ def run(args):
                 errs.append('Project/execution configuration changed during E2E')
         except OSError:
             errs.append('Project/execution configuration disappeared during E2E')
+    if group_context is not None:
+        try:
+            if group_evidence_context(args.change_id,required=True)!=group_context:
+                errs.append('Group G2 generation or member snapshot changed during E2E')
+        except (SetupError,ValueError,OSError) as ex:
+            errs.append('Group evidence context changed during E2E: '+str(ex))
     make_index(rundir)
     outcome='PASS' if not errs else ('FAIL' if code not in (0,2) else 'BLOCKED')
     result={'schema_version':2,'change_id':args.change_id,'run_id':runid,
@@ -150,6 +158,7 @@ def run(args):
        'independent_execution_attested':False}
     if EXECUTION_CONTEXT is not None:
         result.update(execution_context=EXECUTION_CONTEXT,project_config_hash=ctx['project_config_hash'])
+    if group_context is not None:result['group_context']=group_context
     atomic_json(rundir/'verification.json',{'errors':errs,'format_and_crosscheck_passed':not errs})
     atomic_json(rundir/'summary.json',result)
     with (rundir/'test_results.csv').open('w',encoding='utf-8',newline='') as file:

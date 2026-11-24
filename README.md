@@ -1,4 +1,4 @@
-# Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.4
+# Claude Code + GPT-6 Luna / 既存Java Webアプリ仕様駆動開発スターター v5.5
 
 **現状:** v5スターター実装／実ユーザー環境への組み込み・ブラウザ実起動は未検証。v4から改修した新規成果物。仕様書→G2承認→Java実装→JUnit/結合→Playwright for Java E2E・PNG/Trace→独立レビュー→G6承認を支援する。外部のGateway/OSサンドボックスは同梱されない。
 
@@ -9,7 +9,7 @@
 - **Luna利用には独自Gatewayの互換性実証が必要。** Anthropicは非ClaudeモデルへのGateway利用をサポート対象として保証していない。モデル名だけでは接続・ツール呼び出しの成功を保証しない。
 - R12（CI強制）は保留なので、ローカルの証跡PASSを独立CIの真正性証明と誤認しない。
 
-## クイックインストール（v5.4：独立インストール方式）
+## クイックインストール（v5.5：独立インストール方式）
 
 v5.4ではツール本体を任意の専用ディレクトリへ配置し、JavaのGitリポジトリをプロファイルとして後から選択します。JavaプロジェクトへのSkills/Agents/スクリプトのコピーや既存Claude設定の上書きは不要です。
 
@@ -104,6 +104,40 @@ clone済みの別ソースから bash "$HOME/sdd-starter/uninstall.sh" --install
 python3 -m unittest discover -s installer_tests -v
 npm pack --dry-run
 ```
+
+## 複数コードベースの横断改修（v5.5）
+
+最大10個のGitリポジトリを同じ変更IDで選択できます。登録済みプロファイルから、その案件で改修する2〜10個を指定します。Claude CodeとSDDは同じWSLまたは同じDev Container内に配置し、全コードベースがそこからアクセスできることが条件です。
+
+```bash
+export SDD_HOME="$HOME/tools/sdd"
+"$SDD_HOME/sdd" configure --profile api --codebase /workspaces/api --execution devcontainer
+"$SDD_HOME/sdd" configure --profile web --codebase /workspaces/web --execution devcontainer
+"$SDD_HOME/sdd" configure --profile batch --codebase /workspaces/batch --execution devcontainer
+"$SDD_HOME/sdd" group create --change-id CHG-101 --profiles api web batch \
+  --summary 'API項目追加。契約・改修順序・横断テストを確認する'
+```
+
+各プロファイルの初回 `/project-setup` / `/tool-setup` を済ませ、以下を**別々のターミナル**で起動し、それぞれ `/spec-change CHG-101` を実行します。
+
+```bash
+"$SDD_HOME/sdd" group run --change-id CHG-101 --profile api
+"$SDD_HOME/sdd" group run --change-id CHG-101 --profile web
+"$SDD_HOME/sdd" group run --change-id CHG-101 --profile batch
+```
+
+担当セッションは自分のGitルートを操作し、他の対象ルートは契約・コードの参照用。複数セッションで並行実装できます。同一チェックアウトの二重起動は拒否します。OSレベルのサンドボックスではありません。
+
+全リポジトリのG1計画をレビューし、共通計画・各要件・テスト設計・設定をまとめて人が承認します。
+
+```bash
+"$SDD_HOME/sdd" group approve-g2 --change-id CHG-101
+"$SDD_HOME/sdd" group status --change-id CHG-101
+```
+
+どれかの対象計画や設定が変われば全体のG2が失効します。正式E2EとG6は全対象のスナップショット・G2世代に紐づき、他の対象が変更された場合は再実行が必要です。NET/G6は各リポジトリで確認し、個別PASSだけでシステム全体のPASSとはしません。単一プロファイルの従来の使い方も維持します。
+
+詳しい手順・制約・共通計画更新は [複数コードベース運用ガイド](docs/ai/multi-codebase.md) を参照してください。複数の進捗・承認の集約は `group status` を利用し、既存のダッシュボードは各コードベースを指定して閲覧できます。
 
 ## 旧v5.3.x方式の手動インストール（互換用・新規導入非推奨）
 

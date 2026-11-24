@@ -13,7 +13,7 @@ import re
 import secrets
 import subprocess
 from datetime import datetime, timezone
-from project_setup import ROOT, CONFIG, EXECUTION_CONTEXT, SetupError
+from project_setup import ROOT, KIT_ROOT, CONFIG, EXECUTION_CONTEXT, SetupError
 
 CHANGE_RE = re.compile(r'CHG-[0-9]+\Z')
 RUN_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,100}\Z')
@@ -107,6 +107,44 @@ def external_public_key():
     return resolved
 
 
+def group_for_change(change_id, *, required=False):
+    """Read group membership in standalone mode, without trusting a caller's cwd."""
+    bound=os.environ.get('SDD_GROUP_ID')
+    if bound and bound!=change_id:
+        raise SetupError('Group change ID is fixed at launch')
+    registry=KIT_ROOT/'.sdd-groups.json'
+    if not (registry.exists() or registry.is_symlink() or bound or required):
+        return None
+    try:
+        from group_gate import group_for
+        group=group_for(KIT_ROOT,change_id)
+        if group is None:
+            if required or bound:raise SetupError('Group registry is missing; re-approve the group')
+            return None
+        if EXECUTION_CONTEXT is None or not any(m['codebase']==str(ROOT) and m['execution']==EXECUTION_CONTEXT for m in group['members'].values()):
+            raise SetupError('Current codebase/execution context is not a member of this group')
+        return group
+    except (ImportError,ValueError,OSError,TypeError,KeyError) as ex:
+        raise SetupError(f'Invalid group registry: {ex}') from ex
+
+
+def require_group_g2(change_id, *, required=False):
+    group=group_for_change(change_id,required=required)
+    if group is not None:
+        from group_gate import verify_group
+        try:return verify_group(KIT_ROOT,change_id,root=ROOT,execution=EXECUTION_CONTEXT,required=True)
+        except (ValueError,OSError,TypeError,KeyError) as ex:raise SetupError(f'Group G2 blocked: {ex}') from ex
+    return None
+
+
+def group_evidence_context(change_id, *, required=False):
+    group=group_for_change(change_id,required=required)
+    if group is None:return None
+    from group_gate import evidence_context
+    try:return evidence_context(KIT_ROOT,change_id,ROOT,EXECUTION_CONTEXT,snapshot,required=True)
+    except (ValueError,OSError,TypeError,KeyError) as ex:raise SetupError(f'Group evidence blocked: {ex}') from ex
+
+
 def verify_approval(change_id, gate, *, context=None):
     """Validate a human-recorded local approval; identity is not authenticated."""
     if not CHANGE_RE.fullmatch(change_id) or gate not in ('G2','G6','NET'):
@@ -116,7 +154,16 @@ def verify_approval(change_id, gate, *, context=None):
     if not document.is_file():
         raise SetupError(f'{gate}: human approval record missing')
     content = json.loads(document.read_text(encoding='utf-8'))
-    return validate_approval_content(change_id, gate, content, context=context)
+    result=validate_approval_content(change_id, gate, content, context=context)
+    if gate=='G2':
+        require_group_g2(change_id,required=bool(content.get('group_id')))
+    elif gate=='G6':
+        group=require_group_g2(change_id,required=bool(content.get('group_context')))
+        if group is not None:
+            current=group_evidence_context(change_id,required=True)
+            if not context or context.get('group_context')!=current:
+                raise SetupError('G6 requires fresh E2E evidence for the entire group')
+    return result
 
 
 def validate_approval_content(change_id, gate, content, *, context=None):
@@ -147,6 +194,8 @@ def validate_approval_content(change_id, gate, content, *, context=None):
     elif gate == 'G6':
         if not context or content.get('run_id') != context.get('run_id') or content.get('snapshot_id') != context.get('snapshot_id') or content.get('summary_sha256') != context.get('summary_sha256'):
             raise SetupError('G6 approval does not bind to this run/snapshot/summary')
+        if context.get('group_context')!=content.get('group_context'):
+            raise SetupError('G6 approval does not bind to this group evidence context')
     else:
         if not context or content.get('allowed_origin') != context.get('allowed_origin'):
             raise SetupError('NET attestation does not match this origin')

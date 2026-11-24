@@ -11,9 +11,9 @@ disable-model-invocation: true
 0. `docs/ai/v5-operations.md`を読み、`python3 scripts/project_setup.py check`および`toolchain.py doctor --phase dev`を実施。今回のGitコードベースとテスト環境をユーザーへ明示。`SDD_CHANGE_ID`を変更IDへ設定する（承認証明ではない）。
 1. G1: `spec-analyst`で要件定義/基本設計、既存コード/既存テストを調査。REQに出典・種別A/B/C/Dを付与、C/Dは未承認のまま実装しない。`docs/changes/<CHG>/requirements.csv`, `change-plan.md`を生成。
 2. 実装**前**に`test-designer`で正常/異常/境界/回帰/権限を整理し、`test_cases.csv`にTC-ID・期待結果・Javaテスト実装場所を割り当てる。正式E2Eは`examples/`を使用せず、実アプリ固有のJavaテストへ対応させる。`check_traceability.py`を適宜実行。
-3. G2: 人に変更設計・要件・期待結果・既存機能への影響を提示。**承認前はJava実装しない**。人に別ターミナルで `python3 scripts/approval_gate.py record-g2 --change-id <CHG>` を実行してもらう。Claude自身が承認を記録してはならない。`approval_gate.py verify-g2`で対象ハッシュを検査。
+3. G2: 人に変更設計・要件・期待結果・既存機能への影響を提示。**承認前はJava実装しない**。単一コードベースの場合、人に別ターミナルで `python3 scripts/approval_gate.py record-g2 --change-id <CHG>` を実行してもらう。**複数コードベース案件（SDD_GROUP_ID設定時）** は全対象のG1完了後、別ターミナルで人に `sdd group approve-g2 --change-id <CHG>` を一度だけ実行してもらう。各担当以外は参照のみとし、個別record-g2を実行しない。詳細は `docs/ai/multi-codebase.md`。Claude自身が承認を記録してはならない。`approval_gate.py verify-g2`で対象ハッシュを検査。
 4. G3: `java-developer`に変更単位の実装を委譲。JUnit/結合、静的解析を実行。正式結果の集約は`scripts/run_java_tests.py --phase unit|integration --change-id <CHG>`を利用し、設定済み保存先へRUN-IDで保存する（結合コマンドは任意設定）。`dev`モードでは部分テストを許可し、正式ゲートの全件実施と混同しない。テスト失敗を理由に期待値を変更しない。
-5. G4: `e2e-runner`に正式E2Eを委譲。先にG2、ネットワーク隔離の実運用確認と**NET承認記録**（人が別ターミナルで `record-net` を実行。URL・隔離方式を指定）、toolchain e2e診断、正式テスト実装をチェック。`python3 scripts/run_e2e.py --change-id <CHG> --mode final`を実行。スクリーンショット、Trace、JUnit XML、run-context/summary/indexを保存。未実施、SKIP、DEMO_ONLY、証跡欠落はBLOCKED。
+5. G4: `e2e-runner`に正式E2Eを委譲。複数コードベース案件は全担当の実装・API/DB契約を揃えてから正式E2Eを実行し、他の対象コードベースが変わったら再実行する。先にG2、ネットワーク隔離の実運用確認と**NET承認記録**（人が別ターミナルで `record-net` を実行。URL・隔離方式を指定）、toolchain e2e診断、正式テスト実装をチェック。`python3 scripts/run_e2e.py --change-id <CHG> --mode final`を実行。スクリーンショット、Trace、JUnit XML、run-context/summary/indexを保存。未実施、SKIP、DEMO_ONLY、証跡欠落はBLOCKED。
 6. G5: `independent-reviewer`に仕様↔コード↔TC↔実行結果↔証跡の照合を依頼。G4のローカル整合性PASSは仕様充足と同義ではない。未解決課題を列挙する。
 7. G6: 人がコード差分・独立レビュー・JUnit・画面証跡と残存リスクを確認し、人が別ターミナルで `record-g6 --change-id <CHG> --run-dir <RUN-DIR>` を実行。`approval_gate.py verify-g6`でRUN_ID/snapshot/summaryハッシュを照合する。マージ・デプロイは自動実施しない。
 8. 外部隔離、承認記録、対象モジュール/接続先、Gatewayが未準備なら**その工程をBLOCKED**と報告。未準備をPASSと言わない。

@@ -11,10 +11,10 @@ import sys
 from pathlib import Path
 from project_setup import ROOT, CONFIG, EXECUTION_CONTEXT, SetupError, load_config, validate
 from v5_core import (CHANGE_RE, plan_hashes, verify_approval, validate_approval_content,
-                     file_digest, snapshot, atomic_json, utcnow)
+                     file_digest, snapshot, atomic_json, utcnow, group_for_change, group_evidence_context)
 
 
-def g6_context(run_dir):
+def g6_context(run_dir, change_id=None):
     if not run_dir:
         raise SetupError('--run-dir required')
     run=json.loads((run_dir/'run-context.json').read_text(encoding='utf-8'))
@@ -30,11 +30,23 @@ def g6_context(run_dir):
                 run.get('project_config_hash') != expected or
                 summary.get('project_config_hash') != expected):
             raise SetupError('E2E run belongs to a different project/execution configuration; rerun E2E')
-    return {'run_id':run['run_id'],'snapshot_id':run['snapshot_id'],
-            'summary_sha256':file_digest(run_dir/'summary.json')}
+    context={'run_id':run['run_id'],'snapshot_id':run['snapshot_id'],
+             'summary_sha256':file_digest(run_dir/'summary.json')}
+    cid=change_id or run.get('change_id')
+    if cid:
+        group=group_evidence_context(cid,required=bool(run.get('group_context') or summary.get('group_context')))
+        if group is not None:
+            if run.get('change_id')!=cid or run.get('group_context')!=group or summary.get('group_context')!=group:
+                raise SetupError('Group membership, G2 approval generation or peer snapshot changed; rerun formal E2E')
+            context['group_context']=group
+    elif os.environ.get('SDD_GROUP_ID') or run.get('group_context'):
+        raise SetupError('Group run change ID missing')
+    return context
 
 
 def record(gate, change_id, context, isolation_mode):
+    if gate=='G2' and group_for_change(change_id) is not None:
+        raise SetupError('Use sdd group approve-g2; do not record individual G2 for a group')
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise SetupError('Human approval must be entered in a separate interactive terminal')
     details=plan_hashes(change_id) if gate=='G2' else dict(context)
@@ -88,7 +100,7 @@ def main():
                 if EXECUTION_CONTEXT is not None:
                     context['project_config_hash']=file_digest(CONFIG)
             elif gate=='G6':
-                context=g6_context(args.run_dir)
+                context=g6_context(args.run_dir,args.change_id)
             if operation=='record':
                 result=record(gate,args.change_id,context,args.isolation_mode)
             else:

@@ -1,8 +1,8 @@
 {
   "name": "claude-spec-driven-development",
-  "version": "5.4.0",
+  "version": "5.5.0",
   "private": true,
-  "description": "Install SDD independently, then select a local or Dev Container Java Git repository",
+  "description": "Independent SDD tool for single or coordinated multi-repository changes",
   "bin": {
     "sdd-install": "bin/sdd-install.js",
     "sdd-uninstall": "bin/sdd-uninstall.js"
@@ -26,6 +26,7 @@
     "README.md",
     "uninstall.sh",
     "standalone.py",
+    "group_work.py",
     "sdd",
     "!**/__pycache__/**",
     "!**/*.pyc",

@@ -91,10 +91,12 @@ def main():
             if not current.is_relative_to(ROOT.resolve()):return reject('Tool cwd outside the selected codebase')
         if tool=='Bash':
             command=inp.get('command','')
-            if os.environ.get('SDD_PROJECT_ROOT') and isinstance(command,str) and re.search(r'\bSDD_(?:PROJECT_ROOT|EXECUTION_CONTEXT|CHANGE_ID)\s*=',command):
+            if os.environ.get('SDD_PROJECT_ROOT') and isinstance(command,str) and re.search(r'\bSDD_(?:PROJECT_ROOT|EXECUTION_CONTEXT|CHANGE_ID|GROUP_ID)\s*=',command):
                 return reject('Session workspace and change ID are fixed at launch')
             if isinstance(command,str) and re.search(r'\brecord-(?:g2|net|g6)\b',command,re.I):
                 return reject('Only the human operator may record approval in a separate terminal')
+            if isinstance(command,str) and re.search(r'\bgroup\s+(?:approve-g2|create|plan)\b',command,re.I):
+                return reject('Only the human operator may change a group or record group G2')
             if allow_before_g2(command):return 0
             if not isinstance(command,str) or SHELL_META.search(command):
                 return reject('Compound shell commands require an operator-reviewed execution path (no ; | && $() redirection)')

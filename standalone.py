@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import copy
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -15,13 +16,15 @@ import tempfile
 
 sys.dont_write_bytecode = True
 from install import Conflict, safe_path, read, sha, encode_json, source_files, atomic_write
+import group_work
+from scripts import group_gate
 
 SOURCE = Path(__file__).resolve().parent
 STATE = '.sdd-install.json'
 PROFILES = '.sdd-workspaces.json'
 DEFAULT_INSTALL = Path.home() / '.local/share/sdd'
 EXTRA = ('CLAUDE.md', '.claude/settings.json', 'README.md', 'installer-gitignore.txt',
-         'install.py', 'standalone.py', 'install.sh', 'uninstall.sh', 'sdd',
+         'install.py', 'standalone.py', 'group_work.py', 'install.sh', 'uninstall.sh', 'sdd',
          'package.json', 'bin/sdd-install.js', 'bin/sdd-uninstall.js')
 PROFILE_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
 CHANGE_ID = re.compile(r'CHG-[0-9]+\Z')
@@ -84,7 +87,7 @@ def install_plan(source, target):
     if previous is None and target.exists():
         # Reinstall after uninstall: profile and empty directory scaffolding are retained.
         for child in target.rglob('*'):
-            if child.is_symlink() or (child.is_file() and child != target/PROFILES):
+            if child.is_symlink() or (child.is_file() and child not in (target/PROFILES, target/group_gate.GROUPS)):
                 raise Conflict('Installation directory is not empty and has no SDD manifest')
     previous = previous or {'files': {}}
     files = list(source_files(source)) + list(EXTRA)
@@ -186,7 +189,7 @@ def configure(args):
 def protect_local(root):
     # Never write through project-controlled symlinks or already-tracked private data.
     for name in ('.claude/local/project-env.json','.claude/local/approvals/placeholder.json',
-                 '.claude/local/progress/placeholder.json'):
+                 '.claude/local/progress/placeholder.json','.claude/local/sdd-session.lock'):
         safe_path(root,name)
     if git(root,'ls-files','--','.claude/local').stdout.strip():
         raise Conflict('.claude/local contains tracked files; resolve before use')
@@ -199,7 +202,7 @@ def protect_local(root):
         atomic_write(path,old.rstrip(b'\n')+b'\n/.claude/local/\n')
         if git(root,'check-ignore','--no-index','.claude/local/project-env.json',check=False).returncode != 0:
             raise Conflict('Could not ignore private state; inspect Git ignore rules')
-    for name in ('.claude/local/project-env.json','.claude/local/approvals/placeholder.json','.claude/local/progress/placeholder.json'):
+    for name in ('.claude/local/project-env.json','.claude/local/approvals/placeholder.json','.claude/local/progress/placeholder.json','.claude/local/sdd-session.lock'):
         if git(root,'check-ignore','--no-index',name,check=False).returncode != 0:
             raise Conflict('Private state would not be Git-ignored: '+name)
     if git(root,'ls-files','--others','--exclude-standard','--','.claude/local').stdout.strip():
@@ -225,6 +228,7 @@ def reject_legacy(root):
 def session_env(root, execution, change_id=None):
     env=dict(os.environ,SDD_PROJECT_ROOT=str(root),SDD_EXECUTION_CONTEXT=execution,PYTHONDONTWRITEBYTECODE='1')
     env.pop('SDD_CHANGE_ID',None)
+    env.pop('SDD_GROUP_ID',None)
     if change_id:
         if not CHANGE_ID.fullmatch(change_id):raise Conflict('Invalid change ID')
         env['SDD_CHANGE_ID']=change_id
@@ -242,7 +246,7 @@ def rewrite(text):
     return text
 
 
-def runtime_bundle(directory,root,profile,execution,change_id=None):
+def runtime_bundle(directory,root,profile,execution,change_id=None,group=None):
     directory=Path(directory)
     for folder in ('.claude/skills','.claude/agents'):
         for path in sorted((SOURCE/folder).rglob('*.md')):
@@ -253,9 +257,10 @@ def runtime_bundle(directory,root,profile,execution,change_id=None):
     cfg.setdefault('permissions',{})['additionalDirectories']=[str(SOURCE)]
     cfg.setdefault('env',{}).update(SDD_PROJECT_ROOT=str(root),SDD_EXECUTION_CONTEXT=execution,PYTHONDONTWRITEBYTECODE='1')
     cfg['env']['SDD_CHANGE_ID']=change_id or ''
+    if group is not None:cfg['env']['SDD_GROUP_ID']=change_id
     for groups in cfg.get('hooks',{}).values():
-        for group in groups:
-            for hook in group.get('hooks',[]):
+        for hook_group in groups:
+            for hook in hook_group.get('hooks',[]):
                 hook['args']=[a.replace('${CLAUDE_PROJECT_DIR}/scripts/',str(SOURCE/'scripts')+'/') for a in hook.get('args',[])]
     settings=directory/'settings.json';settings.write_text(json.dumps(cfg,ensure_ascii=False),encoding='utf-8')
     instructions=directory/'rules.md'
@@ -266,22 +271,75 @@ def runtime_bundle(directory,root,profile,execution,change_id=None):
             'local state and test evidence relative to the selected Git root. Do not edit the tool installation. '
             'Start change sessions with --change-id; do not set or override SDD_PROJECT_ROOT in Bash. '
             'Human approvals must use sdd exec in a separate terminal, never Claude.\n\n')
+    if group is not None:
+        header += ('MULTI-CODEBASE CHANGE '+change_id+'; edit ONLY '+str(root)+'. Other codebases are read-only references. '
+                   'Use separate sdd group run sessions for edits in other repositories. All G2 plans must be approved together. '
+                   'Tell the human to run sdd group approve-g2; do not run record-g2 per repository. '
+                   'Coordinate API/DB contracts and integration order. Do not claim cross-system PASS from individual PASS.\n'
+                   +json.dumps(group['members'],ensure_ascii=False)+'\nCommon plan (review current group status after any change):\n'+group['plan']+'\n\n')
     instructions.write_text(header+rewrite((SOURCE/'CLAUDE.md').read_text(encoding='utf-8')),encoding='utf-8')
     return settings,instructions
+
+
+def session_group(profile, change_id, root, cfg):
+    if not change_id:return None
+    group=group_gate.group_for(SOURCE,change_id)
+    if group is not None:
+        if group['members'].get(profile)!=cfg:
+            raise Conflict('Profile is not a member of the selected change group')
+        for name,member in group['members'].items():
+            peer, current=selected(name)
+            if current!=member:raise Conflict('Group profile changed: '+name)
+            reject_legacy(peer)
+    return group
+
+
+@contextmanager
+def repository_lock(root):
+    """Only one Claude session per physical Git checkout (WSL/Linux/Windows)."""
+    path=safe_path(root,'.claude/local/sdd-session.lock')
+    path.parent.mkdir(parents=True,exist_ok=True)
+    flags=os.O_CREAT|os.O_RDWR|getattr(os,'O_NOFOLLOW',0)
+    fd=os.open(path,flags,0o600)
+    locked=False
+    try:
+        if os.name=='nt':
+            import msvcrt
+            if os.fstat(fd).st_size==0:os.write(fd,b'0')
+            os.lseek(fd,0,os.SEEK_SET)
+            try:msvcrt.locking(fd,msvcrt.LK_NBLCK,1);locked=True
+            except OSError as ex:raise Conflict('Another Claude session is active in this codebase') from ex
+        else:
+            import fcntl
+            try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);locked=True
+            except BlockingIOError as ex:raise Conflict('Another Claude session is active in this codebase') from ex
+        yield
+    finally:
+        if locked:
+            if os.name=='nt':
+                os.lseek(fd,0,os.SEEK_SET);msvcrt.locking(fd,msvcrt.LK_UNLCK,1)
+            else:fcntl.flock(fd,fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def run(args):
     root,cfg=selected(args.profile)
     reject_legacy(root)
+    group=session_group(args.profile,args.change_id,root,cfg)
     env=session_env(root,cfg['execution'],args.change_id)
+    peers=[]
+    if group is not None:
+        env['SDD_GROUP_ID']=args.change_id
+        peers=[m['codebase'] for n,m in group['members'].items() if n!=args.profile]
     if args.dry_run:
         print(json.dumps({'tool_root':str(SOURCE),'git_root':str(root),'execution':cfg['execution'],
-                          'change_id':args.change_id,'launch':'claude --add-dir <session bundle> --settings <session settings> --append-system-prompt-file <rules>'},ensure_ascii=False,indent=2));return 0
+                          'change_id':args.change_id,'group':bool(group),'read_only_peers':peers,
+                          'launch':'claude --add-dir <session bundle> <peer paths> --settings <session settings> --append-system-prompt-file <rules>'},ensure_ascii=False,indent=2));return 0
     if not shutil.which('claude'):raise Conflict('Claude Code CLI is not installed in this execution environment')
     protect_local(root)
-    with tempfile.TemporaryDirectory(prefix='sdd-session-') as tmp:
-        settings,rules=runtime_bundle(tmp,root,args.profile,cfg['execution'],args.change_id)
-        cmd=['claude','--add-dir',tmp,'--settings',str(settings),'--append-system-prompt-file',str(rules)]
+    with repository_lock(root), tempfile.TemporaryDirectory(prefix='sdd-session-') as tmp:
+        settings,rules=runtime_bundle(tmp,root,args.profile,cfg['execution'],args.change_id,group=group)
+        cmd=['claude','--add-dir',tmp,*peers,'--settings',str(settings),'--append-system-prompt-file',str(rules)]
         if args.model:cmd+=['--model',args.model]
         return subprocess.run(cmd,cwd=root,env=env,check=False).returncode
 
@@ -292,6 +350,22 @@ def execute(args):
     if args.script not in SCRIPTS:raise Conflict('Unknown SDD script')
     protect_local(root)
     env=session_env(root,cfg['execution'],args.change_id)
+    # Approval/test scripts normally receive the change ID after the script name.
+    cid=args.change_id
+    for i,item in enumerate(args.arguments):
+        if item=='--change-id' and i+1<len(args.arguments):
+            if cid and cid!=args.arguments[i+1]:raise Conflict('Conflicting change IDs')
+            cid=args.arguments[i+1]
+        elif item.startswith('--change-id='):
+            value=item.split('=',1)[1]
+            if cid and cid!=value:raise Conflict('Conflicting change IDs')
+            cid=value
+    group=session_group(args.profile,cid,root,cfg)
+    if group is not None:
+        env['SDD_GROUP_ID']=cid
+        env['SDD_CHANGE_ID']=cid
+        if args.script=='approval_gate.py' and 'record-g2' in args.arguments:
+            raise Conflict('Use sdd group approve-g2 for this change')
     return subprocess.run([sys.executable,str(SOURCE/'scripts'/args.script),*args.arguments],cwd=root,env=env,check=False).returncode
 
 
@@ -301,6 +375,7 @@ def main(argv=None):
         q=sp.add_parser(command);q.add_argument('--install-dir',default=str(DEFAULT_INSTALL));q.add_argument('--dry-run',action='store_true')
     q=sp.add_parser('configure');q.add_argument('--profile',default='default');q.add_argument('--codebase',required=True);q.add_argument('--execution',choices=('local','devcontainer'),default='local');q.add_argument('--replace',action='store_true')
     sp.add_parser('profiles')
+    group_work.add_parser(sp)
     for command in ('run','exec'):
         q=sp.add_parser(command);q.add_argument('--profile',default='default');q.add_argument('--change-id')
         if command=='run':q.add_argument('--model');q.add_argument('--dry-run',action='store_true')
@@ -315,13 +390,14 @@ def main(argv=None):
             if not args.dry_run:apply_changes(target,changes)
             print(f'{"DRY RUN" if args.dry_run else "DONE"}: {len(changes)} file(s). Workspace files were not changed.')
             if args.command=='install':print(f'Next: python3 {shlex.quote(str(target/"standalone.py"))} configure --codebase /path/to/java-repo')
-            else:print('Workspace profiles and project data are retained. Empty directories are not removed.')
+            else:print('Workspace profiles, change groups and project data are retained. Empty directories are not removed.')
         elif args.command=='configure':configure(args)
         elif args.command=='profiles':print(json.dumps(profiles(),ensure_ascii=False,indent=2))
+        elif args.command=='group':return group_work.dispatch(sys.modules[__name__],args)
         elif args.command=='run':return run(args)
         else:return execute(args)
         return 0
-    except (Conflict,OSError,ValueError,TypeError,KeyError,subprocess.CalledProcessError) as ex:
+    except (Conflict,OSError,ValueError,TypeError,KeyError,subprocess.SubprocessError) as ex:
         print(f'SDD BLOCKED: {ex}',file=sys.stderr);return 2
 
 
